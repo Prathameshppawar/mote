@@ -9,4 +9,8 @@ assistanceEnabled: boolean, launchAtLogin: boolean, onboardingCompleted: boolean
 /**
  * When set and in the future, Mote observes nothing until this time.
  */
-pausedUntil: string | null, theme: Theme, };
+pausedUntil: string | null, theme: Theme, 
+/**
+ * Check for, download and verify new versions in the background.
+ */
+autoUpdate: boolean, };

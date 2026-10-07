@@ -80,6 +80,11 @@ jobs:
           mkdir assets
           gh release download "${GITHUB_REF_NAME}" --dir assets
           ls -la assets
+      - name: Write the update manifest
+        run: |
+          set -euo pipefail
+          node scripts/update-manifest.mjs --dir assets --tag "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" > assets/latest.json
+          cat assets/latest.json
       - name: Compute SHA-256 checksums
         run: |
           set -euo pipefail
@@ -93,7 +98,7 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
-          gh release upload "$TAG" SHA256SUMS.txt --clobber
+          gh release upload "$TAG" assets/latest.json SHA256SUMS.txt --clobber
           {
             cat "docs/releases/${TAG}.md"
             echo

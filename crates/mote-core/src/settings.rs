@@ -83,6 +83,8 @@ pub struct GeneralSettings {
     #[cfg_attr(feature = "ts", ts(type = "string | null"))]
     pub paused_until: Option<DateTime<Utc>>,
     pub theme: Theme,
+    /// Check for, download and verify new versions in the background.
+    pub auto_update: bool,
 }
 
 impl Default for GeneralSettings {
@@ -93,6 +95,7 @@ impl Default for GeneralSettings {
             onboarding_completed: false,
             paused_until: None,
             theme: Theme::System,
+            auto_update: true,
         }
     }
 }

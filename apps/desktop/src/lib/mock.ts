@@ -41,7 +41,7 @@ export function mockListen<T>(event: string, handler: (payload: T) => void): Pro
 export function defaultSettings(): Settings {
   return {
     version: 1,
-    general: { assistanceEnabled: true, launchAtLogin: false, onboardingCompleted: true, pausedUntil: null, theme: "system" },
+    general: { assistanceEnabled: true, launchAtLogin: false, onboardingCompleted: true, pausedUntil: null, theme: "system", autoUpdate: true },
     provider: {
       active: "groq",
       groq: {
@@ -362,6 +362,9 @@ function paletteContext(): PaletteContext {
 
 const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   get_app_info: () => ({ version: "1.0.0", identifier: "io.github.prathameshppawar.mote", platform: "macos", arch: "aarch64", dataDir: "~/Library/Application Support/io.github.prathameshppawar.mote", logDir: "~/Library/Logs/io.github.prathameshppawar.mote" }),
+  get_update_status: () => ({ currentVersion: "1.1.0", state: { state: "up_to_date" } }),
+  check_for_updates: () => ({ currentVersion: "1.1.0", state: { state: "up_to_date" } }),
+  install_update: () => undefined,
   get_settings: () => structuredClone(state.settings),
   save_settings: (a) => {
     state.settings = structuredClone(a.settings as Settings);

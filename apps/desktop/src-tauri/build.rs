@@ -4,6 +4,9 @@
 const COMMANDS: &[&str] = &[
     // Main window
     "get_app_info",
+    "get_update_status",
+    "check_for_updates",
+    "install_update",
     "get_settings",
     "save_settings",
     "get_provider_status",

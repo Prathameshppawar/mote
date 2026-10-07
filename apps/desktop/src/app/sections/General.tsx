@@ -90,6 +90,12 @@ export function General() {
           checked={settings.general.launchAtLogin}
           onChange={(v) => update((s) => void (s.general.launchAtLogin = v))}
         />
+        <ToggleRow
+          title="Update automatically"
+          help="Download and verify new versions in the background. Mote installs them when you restart it from the menu bar or Settings → About."
+          checked={settings.general.autoUpdate}
+          onChange={(v) => update((s) => void (s.general.autoUpdate = v))}
+        />
         <Row title="Appearance" help="Follow the system, or always use light or dark.">
           <Segmented<Theme>
             label="Appearance"

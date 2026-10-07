@@ -26,6 +26,7 @@ pub struct TrayMenu {
     groq: CheckMenuItem<Wry>,
     palette: MenuItem<Wry>,
     pause: MenuItem<Wry>,
+    update: MenuItem<Wry>,
 }
 
 #[cfg(target_os = "macos")]
@@ -47,6 +48,7 @@ pub fn build(app: &AppHandle, settings: &Settings) -> tauri::Result<()> {
     let diagnostics = MenuItem::with_id(app, "diagnostics", "Diagnostics", true, None::<&str>)?;
     let pause = MenuItem::with_id(app, "pause", "Pause for 1 hour", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Mote", true, None::<&str>)?;
+    let update = MenuItem::with_id(app, "update", "Check for Updates…", true, None::<&str>)?;
     let title = MenuItem::with_id(app, "title", "Mote", false, None::<&str>)?;
     let separator = || PredefinedMenuItem::separator(app);
     let menu = Menu::with_items(
@@ -66,12 +68,13 @@ pub fn build(app: &AppHandle, settings: &Settings) -> tauri::Result<()> {
             &settings_item,
             &privacy,
             &diagnostics,
+            &update,
             &separator()?,
             &pause,
             &quit,
         ],
     )?;
-    app.manage(TrayMenu { status, assistance, completion, context, groq, palette, pause });
+    app.manage(TrayMenu { status, assistance, completion, context, groq, palette, pause, update });
     refresh(app, settings);
 
     TrayIconBuilder::with_id(TRAY_ID)
@@ -94,6 +97,13 @@ pub fn refresh(app: &AppHandle, settings: &Settings) {
     let _ = menu.palette.set_text(format!("Command Palette    {}", shortcut_label(&settings.keyboard.command_palette)));
     let paused = settings.is_paused(Utc::now());
     let _ = menu.pause.set_text(if paused { "Resume" } else { "Pause for 1 hour" });
+}
+
+/// A verified update is downloaded: offer to restart into it.
+pub fn update_ready(app: &AppHandle, version: &str) {
+    if let Some(menu) = app.try_state::<TrayMenu>() {
+        let _ = menu.update.set_text(format!("Restart to Update to {version}"));
+    }
 }
 
 /// Updates the status line and tooltip.
@@ -172,6 +182,21 @@ fn on_menu_event(app: &AppHandle, event: MenuEvent) {
             let minutes = if paused { None } else { Some(60) };
             if let Err(error) = settings_ops::set_paused(app, &state, minutes) {
                 tracing::warn!(%error, "could not change pause state");
+            }
+        }
+        "update" => {
+            let Some(updates) = app.try_state::<Arc<crate::updates::Updates>>() else { return };
+            let updates = updates.inner().clone();
+            if matches!(updates.status(app).state, crate::updates::UpdateState::Ready { .. }) {
+                if let Err(error) = updates.install_and_restart(app) {
+                    tracing::warn!(%error, "could not install the update");
+                }
+            } else {
+                let _ = windows::show_main(app, Some("about"));
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    updates.check(&app).await;
+                });
             }
         }
         "quit" => {

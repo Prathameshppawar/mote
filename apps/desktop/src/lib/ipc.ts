@@ -26,6 +26,7 @@ import type { PermissionState } from "../bindings/PermissionState";
 import type { PermissionStatus } from "../bindings/PermissionStatus";
 import type { ProviderStatus } from "../bindings/ProviderStatus";
 import type { Settings } from "../bindings/Settings";
+import type { UpdateStatus } from "../bindings/UpdateStatus";
 import type { UsageResponse } from "../bindings/UsageResponse";
 
 export function inTauri(): boolean {
@@ -58,6 +59,9 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
 
 export const api = {
   appInfo: () => call<AppInfoResponse>("get_app_info"),
+  updateStatus: () => call<UpdateStatus>("get_update_status"),
+  checkForUpdates: () => call<UpdateStatus>("check_for_updates"),
+  installUpdate: () => call<void>("install_update"),
   settings: () => call<Settings>("get_settings"),
   saveSettings: (settings: Settings) => call<Settings>("save_settings", { settings }),
   providerStatus: () => call<ProviderStatus>("get_provider_status"),

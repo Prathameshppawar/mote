@@ -11,6 +11,7 @@ mod shell;
 mod shortcuts;
 mod state;
 mod tray;
+mod updates;
 mod windows;
 mod writers;
 
@@ -53,6 +54,7 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(shortcuts::handle).build())
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             setup(app.handle()).map_err(|error| {
                 tracing::error!(error = %error, "startup failed");
@@ -62,6 +64,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_app_info,
+            commands::get_update_status,
+            commands::check_for_updates,
+            commands::install_update,
             commands::get_settings,
             commands::save_settings,
             commands::get_provider_status,
@@ -219,6 +224,8 @@ fn setup(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 
     spawn_maintenance(state.clone());
     spawn_health_check(state.clone());
+    app.manage(Arc::new(updates::Updates::new()));
+    updates::spawn_background(app.clone());
 
     if !settings.general.onboarding_completed {
         windows::show_main(app, Some("onboarding"))?;

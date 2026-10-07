@@ -497,3 +497,26 @@ pub fn overlay_ready(shell: State<'_, Arc<DesktopShell>>, seq: u64, width: f64, 
         shell.on_overlay_ready(seq, width, height);
     }
 }
+
+// ---- updates ----------------------------------------------------------------
+
+#[tauri::command]
+pub fn get_update_status(
+    app: AppHandle,
+    updates: State<'_, Arc<crate::updates::Updates>>,
+) -> crate::updates::UpdateStatus {
+    updates.status(&app)
+}
+
+#[tauri::command]
+pub async fn check_for_updates(
+    app: AppHandle,
+    updates: State<'_, Arc<crate::updates::Updates>>,
+) -> CommandResult<crate::updates::UpdateStatus> {
+    Ok(updates.inner().clone().check(&app).await)
+}
+
+#[tauri::command]
+pub fn install_update(app: AppHandle, updates: State<'_, Arc<crate::updates::Updates>>) -> CommandResult<()> {
+    updates.install_and_restart(&app)
+}

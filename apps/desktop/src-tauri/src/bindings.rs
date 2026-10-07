@@ -23,6 +23,7 @@ use crate::palette::{
     PaletteSource,
 };
 use crate::shell::OverlayPayload;
+use crate::updates::{UpdateState, UpdateStatus};
 
 #[test]
 fn export_bindings() {
@@ -54,6 +55,8 @@ fn export_bindings() {
         OverlayPayload,
         TransformAction,
         EnhanceStyle,
+        UpdateStatus,
+        UpdateState,
         PaletteContext,
         PaletteRunRequest,
         PaletteRunResult,
