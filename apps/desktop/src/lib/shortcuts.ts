@@ -52,8 +52,9 @@ export function acceleratorFromEvent(
   if (mac && e.ctrlKey) parts.push("Control");
   if (!mac && e.metaKey) parts.push("Super");
   if (e.altKey) parts.push("Alt");
-  if (e.shiftKey) parts.push("Shift");
+  // Shift alone isn't enough: the shortcut would fire while typing capitals.
   if (!parts.length) return null;
+  if (e.shiftKey) parts.push("Shift");
   let key: string;
   if (/^Key[A-Z]$/.test(e.code)) key = e.code.slice(3);
   else if (/^Digit[0-9]$/.test(e.code)) key = e.code.slice(5);

@@ -391,13 +391,23 @@ impl Settings {
             "usage.retentionDays",
             "Must be between 7 and 3650 days.",
         );
-        for (field, value) in [
-            ("keyboard.commandPalette", &self.keyboard.command_palette),
-            ("keyboard.nextSuggestion", &self.keyboard.next_suggestion),
-            ("keyboard.previousSuggestion", &self.keyboard.previous_suggestion),
-        ] {
-            if let Err(message) = parse_accelerator(value) {
-                check(false, field, &message);
+        let shortcuts = [
+            ("keyboard.commandPalette", "the command palette", &self.keyboard.command_palette),
+            ("keyboard.nextSuggestion", "Next suggestion", &self.keyboard.next_suggestion),
+            ("keyboard.previousSuggestion", "Previous suggestion", &self.keyboard.previous_suggestion),
+        ];
+        let mut assigned: Vec<(Accelerator, &str)> = Vec::new();
+        for (field, label, value) in shortcuts {
+            match parse_accelerator(value) {
+                Ok(accelerator) => {
+                    let accelerator = accelerator.canonical();
+                    if let Some((_, owner)) = assigned.iter().find(|(a, _)| *a == accelerator) {
+                        check(false, field, &format!("Already used for {owner}."));
+                    } else {
+                        assigned.push((accelerator, label));
+                    }
+                }
+                Err(message) => check(false, field, &message),
             }
         }
         if errors.is_empty() {
@@ -447,6 +457,29 @@ pub struct Accelerator {
     pub key: String,
 }
 
+impl Accelerator {
+    /// Aliases resolved and modifiers sorted, for comparing two shortcuts.
+    pub fn canonical(&self) -> Self {
+        let mut modifiers: Vec<String> = self
+            .modifiers
+            .iter()
+            .map(|m| {
+                match m.as_str() {
+                    "cmdorctrl" => "commandorcontrol",
+                    "ctrl" => "control",
+                    "option" => "alt",
+                    "command" | "cmd" | "meta" => "super",
+                    other => other,
+                }
+                .to_string()
+            })
+            .collect();
+        modifiers.sort();
+        modifiers.dedup();
+        Self { modifiers, key: self.key.to_lowercase() }
+    }
+}
+
 const MODIFIERS: &[&str] =
     &["commandorcontrol", "cmdorctrl", "command", "cmd", "super", "meta", "control", "ctrl", "alt", "option", "shift"];
 
@@ -473,6 +506,9 @@ pub fn parse_accelerator(s: &str) -> Result<Accelerator, String> {
     }
     if seen.is_empty() {
         return Err("Global shortcuts need at least one modifier.".into());
+    }
+    if seen.iter().all(|m| m == "shift") {
+        return Err("Add Ctrl, Alt or Cmd: with Shift alone the shortcut would fire while typing.".into());
     }
     Ok(Accelerator { modifiers: seen, key: key.to_string() })
 }
@@ -606,6 +642,23 @@ mod tests {
         assert!(parse_accelerator("Ctrl+Ctrl+K").is_err());
         assert!(parse_accelerator("Ctrl+").is_err());
         assert!(parse_accelerator("Ctrl+F25").is_err());
+        assert!(parse_accelerator("Shift+K").is_err(), "Shift alone fires while typing capitals");
+        assert!(parse_accelerator("Shift+Alt+K").is_ok());
+    }
+
+    #[test]
+    fn shortcuts_must_be_distinct() {
+        let mut s = Settings::default();
+        s.keyboard.previous_suggestion = s.keyboard.next_suggestion.clone();
+        let errors = s.validate().unwrap_err();
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].field, "keyboard.previousSuggestion");
+        // Aliases and modifier order don't make a shortcut different.
+        s.keyboard.previous_suggestion = "Alt+BracketLeft".into();
+        s.keyboard.next_suggestion = "Shift+CmdOrCtrl+Space".into();
+        let errors = s.validate().unwrap_err();
+        assert_eq!(errors[0].field, "keyboard.nextSuggestion");
+        assert!(errors[0].message.contains("command palette"), "{}", errors[0].message);
     }
 
     #[test]
