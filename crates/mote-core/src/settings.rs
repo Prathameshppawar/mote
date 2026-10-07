@@ -354,7 +354,7 @@ impl Settings {
         check(
             is_allowed_base_url(&groq.base_url),
             "provider.groq.baseUrl",
-            "Must be an https:// URL (http is allowed only for localhost).",
+            "Must be an https:// URL without a username, password or query (http is allowed only for localhost).",
         );
         check(
             (1_000..=120_000).contains(&groq.request_timeout_ms),
@@ -413,20 +413,24 @@ impl Settings {
     }
 }
 
-fn is_allowed_base_url(url: &str) -> bool {
-    let rest = if let Some(rest) = url.strip_prefix("https://") {
-        rest
-    } else if let Some(rest) = url.strip_prefix("http://") {
-        let host = rest.split(['/', ':']).next().unwrap_or_default();
-        if !matches!(host, "localhost" | "127.0.0.1") {
-            return false;
-        }
-        rest
-    } else {
+/// An `https://` URL, or `http://` to a loopback address (a local proxy or
+/// model server). Credentials, queries and fragments are never accepted, so a
+/// URL such as `http://localhost:x@example.com` cannot pass as local.
+fn is_allowed_base_url(raw: &str) -> bool {
+    if raw.len() > 256 || raw.chars().any(char::is_whitespace) {
         return false;
-    };
-    let host = rest.split('/').next().unwrap_or_default();
-    !host.is_empty() && url.len() <= 256 && !url.chars().any(char::is_whitespace)
+    }
+    let Ok(url) = url::Url::parse(raw) else { return false };
+    if !url.username().is_empty() || url.password().is_some() || url.query().is_some() || url.fragment().is_some() {
+        return false;
+    }
+    match (url.scheme(), url.host()) {
+        ("https", Some(_)) => true,
+        ("http", Some(url::Host::Domain(host))) => host == "localhost",
+        ("http", Some(url::Host::Ipv4(ip))) => ip.is_loopback(),
+        ("http", Some(url::Host::Ipv6(ip))) => ip.is_loopback(),
+        _ => false,
+    }
 }
 
 /// Whether `id` looks like a provider model identifier.
@@ -550,11 +554,28 @@ mod tests {
     #[test]
     fn rejects_unsafe_base_urls() {
         let mut s = Settings::default();
-        for bad in ["http://api.groq.com/openai/v1", "ftp://x", "", "https://", "https://exa mple.com"] {
+        for bad in [
+            "http://api.groq.com/openai/v1",
+            "ftp://x",
+            "",
+            "https://",
+            "https://exa mple.com",
+            "http://localhost:x@evil.example/v1",
+            "http://localhost@evil.example/v1",
+            "https://user:pass@api.groq.com/openai/v1",
+            "http://localhost.evil.example/v1",
+            "https://api.groq.com/openai/v1?key=1",
+        ] {
             s.provider.groq.base_url = bad.into();
             assert!(s.validate().is_err(), "{bad}");
         }
-        for good in ["https://api.groq.com/openai/v1", "http://localhost:8080/v1", "http://127.0.0.1:11434/v1"] {
+        for good in [
+            "https://api.groq.com/openai/v1",
+            "http://localhost:8080/v1",
+            "http://127.0.0.1:11434/v1",
+            "http://[::1]:8080/v1",
+            "https://proxy.internal.example/groq/v1",
+        ] {
             s.provider.groq.base_url = good.into();
             assert_eq!(s.validate(), Ok(()), "{good}");
         }

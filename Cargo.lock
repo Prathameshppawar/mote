@@ -2380,6 +2380,7 @@ dependencies = [
  "tracing",
  "ts-rs",
  "unicode-segmentation",
+ "url",
 ]
 
 [[package]]
