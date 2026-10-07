@@ -1,0 +1,32 @@
+[package]
+name = "mote-core"
+description = "Platform-agnostic core of Mote: context engine, intent and language classification, assistance, provider abstraction and usage accounting."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+# Derive TypeScript bindings for IPC types (used by the desktop app's binding export).
+ts = ["dep:ts-rs"]
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+ts-rs = { workspace = true, optional = true }
+unicode-segmentation.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true
