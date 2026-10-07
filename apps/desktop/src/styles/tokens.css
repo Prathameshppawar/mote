@@ -1,0 +1,120 @@
+/*
+ * Design tokens. Light and dark are both *selected* (not an automatic flip):
+ * the OS preference applies unless the user picks a theme, which sets
+ * data-theme on <html>. Chart roles follow the dataviz reference palette.
+ */
+:root {
+  color-scheme: light;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+
+  --bg: #f6f6f3;
+  --surface: #ffffff;
+  --surface-2: #f8f8f6;
+  --surface-3: #efeee9;
+  --sidebar: #efeeea;
+  --border: rgba(11, 11, 11, 0.09);
+  --border-strong: rgba(11, 11, 11, 0.18);
+  --text: #121211;
+  --text-2: #52514e;
+  --text-3: #6b6a65;
+
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-soft: rgba(79, 70, 229, 0.1);
+  --accent-ink: #3730a3;
+  --on-accent: #ffffff;
+  --focus-ring: 0 0 0 3px rgba(79, 70, 229, 0.35);
+
+  --danger: #c0312c;
+  --danger-soft: rgba(208, 59, 59, 0.1);
+  --success-text: #006300;
+  --warning-text: #7a4f00;
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-2: 0 10px 32px rgba(0, 0, 0, 0.14), 0 1px 3px rgba(0, 0, 0, 0.08);
+  --radius-s: 6px;
+  --radius: 10px;
+  --radius-l: 14px;
+
+  /* Charts: dataviz reference instance (light). */
+  --chart-surface: #ffffff;
+  --series-1: #2a78d6;
+  --series-1-wash: rgba(42, 120, 214, 0.1);
+  --chart-grid: #e1e0d9;
+  --chart-axis: #c3c2b7;
+  --chart-muted: #898781;
+  --meter-track: #cde2fb;
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --bg: #0e0e0d;
+    --surface: #1a1a19;
+    --surface-2: #20201f;
+    --surface-3: #2a2a28;
+    --sidebar: #141413;
+    --border: rgba(255, 255, 255, 0.09);
+    --border-strong: rgba(255, 255, 255, 0.18);
+    --text: #f4f4f2;
+    --text-2: #c3c2b7;
+    --text-3: #9d9b93;
+    --accent: #818cf8;
+    --accent-hover: #a5b4fc;
+    --accent-soft: rgba(129, 140, 248, 0.15);
+    --accent-ink: #c7d2fe;
+    --on-accent: #0e0e1a;
+    --focus-ring: 0 0 0 3px rgba(129, 140, 248, 0.45);
+    --danger: #f07070;
+    --danger-soft: rgba(230, 103, 103, 0.14);
+    --success-text: #0ca30c;
+    --warning-text: #fab219;
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-2: 0 12px 36px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.4);
+    --chart-surface: #1a1a19;
+    --series-1: #3987e5;
+    --series-1-wash: rgba(57, 135, 229, 0.12);
+    --chart-grid: #2c2c2a;
+    --chart-axis: #383835;
+    --chart-muted: #898781;
+    --meter-track: #0d366b;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0e0e0d;
+  --surface: #1a1a19;
+  --surface-2: #20201f;
+  --surface-3: #2a2a28;
+  --sidebar: #141413;
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --text: #f4f4f2;
+  --text-2: #c3c2b7;
+  --text-3: #9d9b93;
+  --accent: #818cf8;
+  --accent-hover: #a5b4fc;
+  --accent-soft: rgba(129, 140, 248, 0.15);
+  --accent-ink: #c7d2fe;
+  --on-accent: #0e0e1a;
+  --focus-ring: 0 0 0 3px rgba(129, 140, 248, 0.45);
+  --danger: #f07070;
+  --danger-soft: rgba(230, 103, 103, 0.14);
+  --success-text: #0ca30c;
+  --warning-text: #fab219;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 12px 36px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.4);
+  --chart-surface: #1a1a19;
+  --series-1: #3987e5;
+  --series-1-wash: rgba(57, 135, 229, 0.12);
+  --chart-grid: #2c2c2a;
+  --chart-axis: #383835;
+  --chart-muted: #898781;
+  --meter-track: #0d366b;
+}
