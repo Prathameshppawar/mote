@@ -225,7 +225,12 @@ const PROMPT_HINTS: &[&str] = &[
     "ask deepseek",
     "edit code",
     "add a follow-up",
+    "ask a side question",
 ];
+/// Accessible labels of AI chat boxes inside IDEs: Claude Code's "Message
+/// input", VS Code's "Chat input" (Copilot) and "Inline Chat Input". Only
+/// trusted in IDEs, where a message box is an assistant's, never a person's.
+const IDE_CHAT_HINTS: &[&str] = &["message input", "chat input"];
 const CONVERSATION_HINTS: &[&str] = &[
     "message #",
     "message @",
@@ -590,6 +595,8 @@ pub fn classify(signals: &IntentSignals<'_>) -> IntentAssessment {
     if !hint.is_empty() {
         if hint_matches(hint, PROMPT_HINTS) {
             s.add(IntentKind::Prompt, 4.0, "hint:prompt");
+        } else if signals.category == AppCategory::Ide && hint_matches(hint, IDE_CHAT_HINTS) {
+            s.add(IntentKind::Prompt, 4.0, "hint:ide_chat");
         } else if hint_matches(hint, CONVERSATION_HINTS) {
             s.add(IntentKind::Conversation, 3.0, "hint:conversation");
         }
@@ -810,6 +817,51 @@ mod tests {
             });
             assert_eq!(a.kind, IntentKind::Prompt, "{placeholder}");
         }
+    }
+
+    /// Labels as the IDEs expose them: Claude Code's prompt box has only a CSS
+    /// placeholder, and VS Code's chat inputs are editors with an aria-label.
+    #[test]
+    fn ide_chat_boxes_are_prompts_by_their_label_and_editors_stay_code() {
+        let text = "refactor the parser so errors carry line numbers";
+        let language = detect(text);
+        let classify_label = |label: &str, placeholder: Option<&str>| {
+            classify(&IntentSignals {
+                category: AppCategory::Ide,
+                role: Some(InputRole::TextArea),
+                is_multiline: true,
+                placeholder,
+                label: Some(label),
+                text,
+                language: &language,
+                clipboard_kind: None,
+                previous_category: None,
+                user_override: None,
+            })
+        };
+        for label in [
+            "Message input",
+            "Chat input. Press Enter to send out the request. Use ⌥F1 for Chat Accessibility Help.",
+            "Inline Chat Input, Use ⌥F1 for Inline Chat Accessibility Help.",
+            "Ask a side question",
+        ] {
+            assert_eq!(classify_label(label, None).kind, IntentKind::Prompt, "{label}");
+        }
+        assert_eq!(classify_label("Editor content", None).kind, IntentKind::Code);
+        let commit = classify_label("Source Control Input", Some("Message (⌘⏎ to commit on \"main\")"));
+        assert_ne!(commit.kind, IntentKind::Prompt);
+    }
+
+    #[test]
+    fn a_chat_input_label_outside_an_ide_is_not_a_prompt_signal() {
+        let a = run(Case {
+            category: AppCategory::Chat,
+            role: Some(InputRole::TextArea),
+            multiline: true,
+            placeholder: Some("Message input"),
+            text: "running 10 min late, start without me",
+        });
+        assert_eq!(a.kind, IntentKind::Conversation);
     }
 
     #[test]

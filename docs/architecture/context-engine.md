@@ -66,7 +66,7 @@ Events are persisted by the context writer thread only when activity retention i
 `intent::classify(IntentSignals)` adds weighted evidence from:
 
 - **The application category** (`intent/apps.rs`): email, chat, AI assistant, IDE, terminal, notes, browser, launcher, password manager, Mote, other. Apps are recognised by bundle identifier, executable and name, and AI assistants in a browser by the window title ("ChatGPT", "Claude", "Gemini", "Perplexity", …).
-- **The field**: role (text area, text field, search field, combo box, document, terminal), whether it is multi-line, its placeholder and label ("Message #general", "Ask anything", "Search").
+- **The field**: role (text area, text field, search field, combo box, document, terminal), whether it is multi-line, its placeholder and label ("Message #general", "Ask anything", "Search"). In IDEs, an assistant's chat box is recognised by its accessible label (Claude Code's "Message input", VS Code's "Chat input"), because those boxes draw their placeholder without exposing it.
 - **The text**: greetings and sign-offs, imperative instructions, code tokens, shell syntax, question shape.
 - **Language profile**, **recent clipboard kind**, and **the previous app** (copy in a browser → paste into an IDE prompt).
 
