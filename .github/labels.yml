@@ -1,0 +1,40 @@
+# Repository labels. Apply with: scripts/sync-labels.sh
+- name: bug
+  color: d73a4a
+  description: Something is not working as intended
+- name: enhancement
+  color: a2eeef
+  description: New feature or improvement
+- name: documentation
+  color: 0075ca
+  description: Docs, guides and ADRs
+- name: macos
+  color: 5c6370
+  description: macOS-specific (Accessibility, menu bar, packaging)
+- name: windows
+  color: 0b6ed1
+  description: Windows-specific (UI Automation, tray, installers)
+- name: ui
+  color: c5def5
+  description: Settings window, palette, overlay and dashboard
+- name: core
+  color: 1d76db
+  description: Engine, observer, completion and assistance logic
+- name: context
+  color: bfd4f2
+  description: Context intelligence, events and clipboard awareness
+- name: ai
+  color: 7057ff
+  description: Providers, models, prompts and routing
+- name: privacy
+  color: 0e8a16
+  description: Data minimization, exclusions, retention
+- name: security
+  color: b60205
+  description: Secrets, permissions and hardening
+- name: performance
+  color: fbca04
+  description: Latency, CPU, memory and typing responsiveness
+- name: release
+  color: 006b75
+  description: Versioning, packaging and release automation
