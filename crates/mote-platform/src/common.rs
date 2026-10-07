@@ -46,6 +46,48 @@ pub fn input_role(role: &str, subrole: Option<&str>) -> Option<InputRole> {
     }
 }
 
+/// How an application exposes the text of its web content to accessibility
+/// clients, which decides the switches Mote sets before reading it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WebEngine {
+    /// Native apps, or Electron apps: `AXManualAccessibility` is enough (Electron
+    /// documents it for third-party tools; native apps ignore it).
+    Standard,
+    /// Chromium browsers and apps embedding Chromium (CEF): also the
+    /// `AXEnhancedUserInterface` switch VoiceOver uses.
+    Chromium,
+    /// Apps embedding Microsoft WebView2 (new Teams, new Outlook). Both switches
+    /// are set, but these apps are known to expose their text unreliably.
+    WebView2,
+}
+
+/// Bundle identifier prefixes of Chromium-based browsers.
+const CHROMIUM_BROWSERS: &[&str] = &[
+    "com.google.chrome",
+    "com.microsoft.edgemac",
+    "com.brave.browser",
+    "company.thebrowser.",
+    "com.operasoftware.opera",
+    "com.vivaldi.vivaldi",
+    "org.chromium.chromium",
+    "com.openai.atlas",
+    "ai.perplexity.comet",
+];
+
+/// Classifies an app by bundle identifier and the frameworks it ships.
+pub fn web_engine(bundle_id: &str, frameworks: &[String]) -> WebEngine {
+    let id = bundle_id.to_lowercase();
+    if frameworks.iter().any(|f| f == "MSWebView2.framework") {
+        return WebEngine::WebView2;
+    }
+    if CHROMIUM_BROWSERS.iter().any(|prefix| id.starts_with(prefix))
+        || frameworks.iter().any(|f| f == "Chromium Embedded Framework.framework")
+    {
+        return WebEngine::Chromium;
+    }
+    WebEngine::Standard
+}
+
 /// Combines identifying values into a stable element key.
 pub fn element_key(parts: &[&[u8]]) -> u64 {
     let mut joined = Vec::new();
@@ -59,6 +101,24 @@ pub fn element_key(parts: &[&[u8]]) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn web_engines() {
+        let none: Vec<String> = Vec::new();
+        assert_eq!(web_engine("com.google.Chrome", &none), WebEngine::Chromium);
+        assert_eq!(web_engine("com.microsoft.edgemac.Beta", &none), WebEngine::Chromium);
+        assert_eq!(web_engine("company.thebrowser.Browser", &none), WebEngine::Chromium);
+        assert_eq!(web_engine("com.apple.Safari", &none), WebEngine::Standard);
+        assert_eq!(
+            web_engine("com.microsoft.VSCode", &["Electron Framework.framework".to_string()]),
+            WebEngine::Standard
+        );
+        assert_eq!(web_engine("com.microsoft.teams2", &["MSWebView2.framework".to_string()]), WebEngine::WebView2);
+        assert_eq!(
+            web_engine("com.spotify.client", &["Chromium Embedded Framework.framework".to_string()]),
+            WebEngine::Chromium
+        );
+    }
 
     #[test]
     fn splits_text_at_utf16_caret() {

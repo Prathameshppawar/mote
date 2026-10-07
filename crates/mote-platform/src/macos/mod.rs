@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use objc2_application_services::AXError;
 
-use crate::common::{element_key, input_role, split_at_utf16};
+use crate::common::{element_key, input_role, split_at_utf16, web_engine, WebEngine};
 use ax::Element;
 use mote_core::platform::*;
 use mote_core::text::{head_chars, tail_chars};
@@ -77,23 +77,34 @@ impl MacPlatform {
         Some(app)
     }
 
-    /// Chromium-based apps (Electron: Slack, VS Code, Discord, Notion) build
-    /// their accessibility tree only when asked; `AXManualAccessibility`
-    /// requests it without the side effects of `AXEnhancedUserInterface`.
-    fn enable_app_accessibility(&self, pid: i32) {
-        let mut done = lock(&self.accessibility_enabled_pids);
-        if done.insert(pid) {
-            let enabled = Element::application(pid).set_bool("AXManualAccessibility", true);
-            tracing::debug!(pid, enabled, "requested accessibility tree");
+    /// Apps rendering with Chromium build their accessibility tree only when
+    /// an assistive tool asks, and until then report no focused element at all,
+    /// so this runs for the frontmost app *before* focus is queried, once per
+    /// process. `AXManualAccessibility` is the switch Electron documents for
+    /// third-party tools (native apps ignore it). Chromium browsers and apps
+    /// embedding Chromium or WebView2 also get `AXEnhancedUserInterface`, the
+    /// switch VoiceOver uses, which they need for web content.
+    fn enable_app_accessibility(&self, pid: i32, bundle_id: &str) {
+        if !lock(&self.accessibility_enabled_pids).insert(pid) {
+            return;
         }
+        let app = Element::application(pid);
+        let manual = app.set_bool("AXManualAccessibility", true);
+        let engine = web_engine(bundle_id, &workspace::bundled_frameworks(pid));
+        let enhanced = engine != WebEngine::Standard && app.set_bool("AXEnhancedUserInterface", true);
+        tracing::debug!(pid, ?engine, manual, enhanced, "requested accessibility tree");
     }
 
+    /// The focused element, asked system-wide and, if that finds nothing,
+    /// through the frontmost application (some apps only answer there).
     fn focused_element(&self) -> Result<Option<Element>, PlatformError> {
         match self.system.element("AXFocusedUIElement") {
-            Ok(element) => Ok(Some(element)),
-            Err(AXError::APIDisabled) => Err(PlatformError::PermissionDenied),
-            Err(_) => Ok(None),
+            Ok(element) => return Ok(Some(element)),
+            Err(AXError::APIDisabled) => return Err(PlatformError::PermissionDenied),
+            Err(_) => {}
         }
+        let pid = workspace::frontmost().and_then(|app| app.pid).and_then(|pid| i32::try_from(pid).ok());
+        Ok(pid.and_then(|pid| Element::application(pid).element("AXFocusedUIElement").ok()))
     }
 
     fn read_statics(element: &Element) -> Option<StaticAttributes> {
@@ -254,13 +265,19 @@ impl PlatformAdapter for MacPlatform {
         if !ax::is_trusted() {
             return Err(PlatformError::PermissionDenied);
         }
+        if let Some(front) = workspace::frontmost() {
+            if let Some(pid) = front.pid.and_then(|pid| i32::try_from(pid).ok()) {
+                self.enable_app_accessibility(pid, &front.id);
+            }
+        }
         let Some(element) = self.focused_element()? else {
             *lock(&self.focus) = FocusCache::default();
             return Ok(None);
         };
         let Some(pid) = element.pid() else { return Ok(None) };
-        self.enable_app_accessibility(pid);
         let Some(app) = self.app_for_pid(pid) else { return Ok(None) };
+        // A floating panel can have focus without being the frontmost app.
+        self.enable_app_accessibility(pid, &app.id);
         let key = element_key(&[&pid.to_le_bytes(), &element.hash().to_le_bytes()]);
 
         let mut cache = lock(&self.focus);

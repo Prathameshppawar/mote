@@ -20,6 +20,17 @@ pub fn frontmost() -> Option<AppInfo> {
     app_info(&app)
 }
 
+/// Names of the frameworks bundled with the application `pid` (such as
+/// `Electron Framework.framework`), which tell how it renders web content.
+pub fn bundled_frameworks(pid: i32) -> Vec<String> {
+    let Some(app) = NSRunningApplication::runningApplicationWithProcessIdentifier(pid) else { return Vec::new() };
+    let Some(path) = app.bundleURL().and_then(|url| url.path()) else { return Vec::new() };
+    let dir = std::path::Path::new(&path.to_string()).join("Contents/Frameworks");
+    std::fs::read_dir(dir)
+        .map(|entries| entries.filter_map(Result::ok).map(|e| e.file_name().to_string_lossy().into_owned()).collect())
+        .unwrap_or_default()
+}
+
 /// The application with process id `pid`.
 pub fn by_pid(pid: i32) -> Option<AppInfo> {
     let app = NSRunningApplication::runningApplicationWithProcessIdentifier(pid)?;
