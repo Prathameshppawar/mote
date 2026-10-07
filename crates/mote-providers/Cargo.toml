@@ -1,5 +1,6 @@
 [package]
 name = "mote-providers"
+description = "Model providers for Mote: Groq (v1 primary) and generic OpenAI-compatible endpoints."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,7 +9,20 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
+async-trait.workspace = true
+chrono.workspace = true
 mote-core.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+zeroize = "1.8"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+wiremock.workspace = true
 
 [lints]
 workspace = true

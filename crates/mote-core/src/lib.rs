@@ -20,6 +20,7 @@ pub mod context;
 pub mod engine;
 pub mod intent;
 pub mod language;
+pub mod observer;
 pub mod platform;
 pub mod privacy;
 pub mod prompts;
