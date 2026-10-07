@@ -336,8 +336,10 @@ fn file_description(path: &str) -> Option<String> {
     let mut languages: Vec<(u16, u16)> = version_value(&mut block, "\\VarFileInfo\\Translation", 1)
         .map(|bytes| {
             bytes
-                .chunks_exact(4)
-                .map(|entry| (u16::from_le_bytes([entry[0], entry[1]]), u16::from_le_bytes([entry[2], entry[3]])))
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|&[a, b, c, d]| (u16::from_le_bytes([a, b]), u16::from_le_bytes([c, d])))
                 .collect()
         })
         .unwrap_or_default();
@@ -348,11 +350,8 @@ fn file_description(path: &str) -> Option<String> {
         for &(language, codepage) in &languages {
             let sub_block = format!("\\StringFileInfo\\{language:04x}{codepage:04x}\\{key}");
             let Some(bytes) = version_value(&mut block, &sub_block, 2) else { continue };
-            let units: Vec<u16> = bytes
-                .chunks_exact(2)
-                .map(|unit| u16::from_le_bytes([unit[0], unit[1]]))
-                .take_while(|&u| u != 0)
-                .collect();
+            let units: Vec<u16> =
+                bytes.as_chunks::<2>().0.iter().map(|&unit| u16::from_le_bytes(unit)).take_while(|&u| u != 0).collect();
             let name = String::from_utf16_lossy(&units);
             let name = head_chars(name.trim(), NAME_MAX_CHARS).trim();
             if !name.is_empty() {

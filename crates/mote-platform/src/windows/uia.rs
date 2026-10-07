@@ -244,8 +244,10 @@ impl TextRect {
     /// Parses the flat `[left, top, width, height, ...]` array, dropping empty rectangles.
     fn parse(values: &[f64]) -> Vec<Self> {
         values
-            .chunks_exact(4)
-            .map(|v| Self { left: v[0], top: v[1], width: v[2], height: v[3] })
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|&[left, top, width, height]| Self { left, top, width, height })
             .filter(|r| {
                 [r.left, r.top, r.width, r.height].iter().all(|v| v.is_finite()) && r.width >= 0.0 && r.height > 0.0
             })
