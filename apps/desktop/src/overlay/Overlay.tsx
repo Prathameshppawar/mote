@@ -36,62 +36,68 @@ export function Overlay() {
     void api.overlayReady(payload.seq, Math.ceil(rect.width) + MARGIN * 2, Math.ceil(rect.height) + MARGIN * 2).catch(() => undefined);
   }, [payload]);
 
-  if (!payload) return null;
-  const view = payload.view;
-  const lineHeight = view.anchor?.height ?? 18;
-  const fontSize = view.kind === "completion" ? clamp(lineHeight * 0.74, 12, 20) : 13;
-  const [from, to] = (view.detail ?? "").split(" → ");
+  const view = payload?.view;
+  // Caret rectangles are in physical pixels on Windows; CSS sizes are logical.
+  const anchorHeight = view?.anchor?.height ?? 18;
+  const lineHeight = view?.coordinateSpace === "physical_pixels" ? anchorHeight / (window.devicePixelRatio || 1) : anchorHeight;
+  const fontSize = view?.kind === "completion" ? clamp(lineHeight * 0.74, 12, 20) : 13;
+  const [from, to] = (view?.detail ?? "").split(" → ");
 
   return (
     <div className="overlay-stage" style={{ padding: MARGIN }}>
-      <div ref={pill} className={`pill pill-${view.kind}`} style={{ fontSize }} role="status" aria-live="polite">
-        {view.kind === "completion" ? (
-          <>
-            <span className="ghost">{view.text.replace(/^ /, " ")}</span>
-            {view.count > 1 ? (
-              <span className="counter">
-                {view.index + 1}/{view.count}
-              </span>
+      {/* The live region stays mounted so each new suggestion is announced. */}
+      <div role="status" aria-live="polite">
+        {view ? (
+          <div ref={pill} className={`pill pill-${view.kind}`} style={{ fontSize }}>
+            {view.kind === "completion" ? (
+              <>
+                <span className="ghost">{view.text.replace(/^ /, " ")}</span>
+                {view.count > 1 ? (
+                  <span className="counter">
+                    {view.index + 1}/{view.count}
+                  </span>
+                ) : null}
+                <kbd className="key">Tab</kbd>
+              </>
             ) : null}
-            <kbd className="key">Tab</kbd>
-          </>
-        ) : null}
 
-        {view.kind === "correction" ? (
-          <>
-            <Icon name="writing" size={13} />
-            <span className="fix">
-              <s>{from}</s>
-              <span className="arrow">→</span>
-              <strong>{to}</strong>
-            </span>
-            <kbd className="key">Tab</kbd>
-          </>
-        ) : null}
+            {view.kind === "correction" ? (
+              <>
+                <Icon name="writing" size={13} />
+                <span className="fix">
+                  <s>{from}</s>
+                  <span className="arrow">→</span>
+                  <strong>{to}</strong>
+                </span>
+                <kbd className="key">Tab</kbd>
+              </>
+            ) : null}
 
-        {view.kind === "prompt_hint" ? (
-          <>
-            <Icon name="sparkle" size={13} />
-            <span>{view.text}</span>
-            {view.detail ? <kbd className="key">{view.detail}</kbd> : null}
-          </>
-        ) : null}
+            {view.kind === "prompt_hint" ? (
+              <>
+                <Icon name="sparkle" size={13} />
+                <span>{view.text}</span>
+                {view.detail ? <kbd className="key">{view.detail}</kbd> : null}
+              </>
+            ) : null}
 
-        {view.kind === "context" ? (
-          <>
-            <Icon name="clipboard" size={13} />
-            <span className="context-text">
-              <strong>{view.text}</strong>
-              {view.detail ? <span className="context-detail">{view.detail}</span> : null}
-            </span>
-          </>
-        ) : null}
+            {view.kind === "context" ? (
+              <>
+                <Icon name="clipboard" size={13} />
+                <span className="context-text">
+                  <strong>{view.text}</strong>
+                  {view.detail ? <span className="context-detail">{view.detail}</span> : null}
+                </span>
+              </>
+            ) : null}
 
-        {view.kind === "notice" ? (
-          <>
-            <Icon name="check" size={13} />
-            <span>{view.text}</span>
-          </>
+            {view.kind === "notice" ? (
+              <>
+                <Icon name="check" size={13} />
+                <span>{view.text}</span>
+              </>
+            ) : null}
+          </div>
         ) : null}
       </div>
     </div>

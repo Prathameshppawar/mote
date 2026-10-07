@@ -10,7 +10,17 @@ import { formatRelative } from "../../lib/format";
 import { api, errorMessage } from "../../lib/ipc";
 import { useSettings } from "../settingsContext";
 
-function ConfirmButton({ label, confirm, onConfirm }: { label: string; confirm: string; onConfirm: () => Promise<void> }) {
+function ConfirmButton({
+  label,
+  confirm,
+  onConfirm,
+  onError,
+}: {
+  label: string;
+  confirm: string;
+  onConfirm: () => Promise<void>;
+  onError: (error: unknown) => void;
+}) {
   const [armed, setArmed] = useState(false);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -28,13 +38,15 @@ function ConfirmButton({ label, confirm, onConfirm }: { label: string; confirm: 
         setBusy(true);
         try {
           await onConfirm();
+        } catch (e) {
+          onError(e);
         } finally {
           setBusy(false);
           setArmed(false);
         }
       }}
     >
-      {busy ? <span className="spinner" /> : null}
+      {busy ? <span className="spinner" aria-hidden="true" /> : null}
       {armed ? confirm : label}
     </button>
   );
@@ -64,7 +76,7 @@ export function Privacy() {
         />
         <ToggleRow
           title="Text near the cursor"
-          help="Up to ~2,000 characters before the cursor in the focused field, held in memory. Never password fields, never excluded apps."
+          help="Up to ~2,000 characters before the cursor in the focused field, held in memory (more, once, when you open the command palette). Never password fields, never excluded apps."
           checked={p.observeText}
           onChange={(v) => update((s) => void (s.privacy.observeText = v))}
         />
@@ -140,6 +152,7 @@ export function Privacy() {
               loadEvents();
               showToast("Activity cleared");
             }}
+            onError={(e) => showToast(errorMessage(e))}
           />
         </Row>
         <Row title="Clear usage history" help="Deletes all usage statistics. Groq's own records are not affected.">
@@ -150,6 +163,7 @@ export function Privacy() {
               const n = await api.clearUsageHistory();
               showToast(`Removed ${n} records`);
             }}
+            onError={(e) => showToast(errorMessage(e))}
           />
         </Row>
         <Row title="Reset Mote" help="Deletes all local data, settings and the stored API key, then restarts onboarding.">
@@ -157,12 +171,9 @@ export function Privacy() {
             label="Reset everything"
             confirm="Click again to reset"
             onConfirm={async () => {
-              try {
-                replace(await api.resetLocalData());
-              } catch (e) {
-                showToast(errorMessage(e));
-              }
+              replace(await api.resetLocalData());
             }}
+            onError={(e) => showToast(errorMessage(e))}
           />
         </Row>
       </Card>

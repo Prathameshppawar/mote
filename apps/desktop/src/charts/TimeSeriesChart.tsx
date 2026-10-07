@@ -13,6 +13,8 @@ type Props = {
   /** Accessible description, e.g. "Tokens per day, last 30 days". */
   ariaLabel: string;
   height?: number;
+  /** Values are counts: use whole-number axis ticks. */
+  integer?: boolean;
 };
 
 const M = { top: 12, right: 14, bottom: 26, left: 52 };
@@ -22,12 +24,12 @@ const M = { top: 12, right: 14, bottom: 26, left: 52 };
  * Lines get a crosshair that snaps to the nearest point; columns are their own
  * hit targets. Both respond to keyboard focus and arrow keys.
  */
-export function TimeSeriesChart({ points, variant, format, formatLabel = (l) => l, ariaLabel, height = 190 }: Props) {
+export function TimeSeriesChart({ points, variant, format, formatLabel = (l) => l, ariaLabel, height = 190, integer = false }: Props) {
   const [containerRef, width] = useWidth<HTMLDivElement>();
   const [active, setActive] = useState<number | null>(null);
   const n = points.length;
   const values = points.map((p) => p.value ?? 0);
-  const ticks = useMemo(() => niceTicks(Math.max(0, ...values)), [values]);
+  const ticks = useMemo(() => niceTicks(Math.max(0, ...values), 4, integer), [values, integer]);
   const top = ticks[ticks.length - 1] || 1;
   const plotW = Math.max(40, width - M.left - M.right);
   const plotH = height - M.top - M.bottom;
@@ -84,13 +86,14 @@ export function TimeSeriesChart({ points, variant, format, formatLabel = (l) => 
       ref={containerRef}
       className="chart"
       tabIndex={0}
-      role="img"
-      aria-label={ariaLabel}
+      role="group"
+      aria-roledescription="chart"
+      aria-label={`${ariaLabel}. Use the arrow keys to read values; the table view lists them all.`}
       onKeyDown={onKeyDown}
       onFocus={() => setActive((a) => a ?? lastIndex ?? null)}
       onBlur={() => setActive(null)}
     >
-      <svg width={width} height={height} className="chart-svg">
+      <svg width={width} height={height} className="chart-svg" aria-hidden="true">
         {ticks.map((t) => (
           <g key={t}>
             <line
@@ -142,11 +145,17 @@ export function TimeSeriesChart({ points, variant, format, formatLabel = (l) => 
         />
       </svg>
       {activePoint ? (
-        <div className="chart-tooltip" style={{ left: tooltipLeft }} role="status">
+        <div className="chart-tooltip" style={{ left: tooltipLeft }} aria-hidden="true">
           <strong>{activePoint.value === null ? "No data" : format(activePoint.value)}</strong>
           <span>{formatLabel(activePoint.label)}</span>
         </div>
       ) : null}
+      {/* Always mounted, so screen readers announce each value as it changes. */}
+      <div className="sr-only" role="status" aria-live="polite">
+        {activePoint
+          ? `${formatLabel(activePoint.label)}: ${activePoint.value === null ? "no data" : format(activePoint.value)}`
+          : ""}
+      </div>
     </div>
   );
 }

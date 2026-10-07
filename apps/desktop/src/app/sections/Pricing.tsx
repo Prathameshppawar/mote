@@ -3,33 +3,62 @@ import { useEffect, useState } from "react";
 import type { ModelPricing } from "../../bindings/ModelPricing";
 import { Card, Note } from "../../components/controls";
 import { Icon } from "../../components/Icon";
+import { parsePrice } from "../../lib/format";
 import { api, errorMessage } from "../../lib/ipc";
+
+/** Today's date in the user's time zone, as YYYY-MM-DD. */
+function localDate(now = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
 
 export function PricingEditor() {
   const [rows, setRows] = useState<ModelPricing[]>([]);
-  const [draft, setDraft] = useState({ model: "", input: "", output: "", date: new Date().toISOString().slice(0, 10) });
+  const [draft, setDraft] = useState({ model: "", input: "", output: "", date: localDate() });
   const [problem, setProblem] = useState<string | null>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
   useEffect(() => {
     api.listPricing().then(setRows, (e) => setProblem(errorMessage(e)));
   }, []);
-  const save = async () => {
+  useEffect(() => {
+    if (!confirmReset) return;
+    const t = setTimeout(() => setConfirmReset(false), 4000);
+    return () => clearTimeout(t);
+  }, [confirmReset]);
+  const run = async (action: () => Promise<ModelPricing[]>) => {
     try {
-      setRows(
-        await api.savePricing({
-          id: null,
-          provider: "groq",
-          model: draft.model.trim(),
-          inputCostPerMillion: Number(draft.input),
-          outputCostPerMillion: Number(draft.output),
-          effectiveDate: draft.date,
-          source: "user",
-        }),
-      );
-      setDraft({ ...draft, model: "", input: "", output: "" });
+      setRows(await action());
       setProblem(null);
+      return true;
     } catch (e) {
       setProblem(errorMessage(e));
+      return false;
     }
+  };
+  const save = async () => {
+    const input = parsePrice(draft.input);
+    const output = parsePrice(draft.output);
+    if (input === null || output === null) {
+      setProblem("Prices are numbers of US dollars per million tokens, such as 0.15.");
+      return;
+    }
+    const saved = await run(() =>
+      api.savePricing({
+        id: null,
+        provider: "groq",
+        model: draft.model.trim(),
+        inputCostPerMillion: input,
+        outputCostPerMillion: output,
+        effectiveDate: draft.date,
+        source: "user",
+      }),
+    );
+    if (saved) setDraft({ ...draft, model: "", input: "", output: "" });
+  };
+  const reset = () => {
+    if (!confirmReset) return setConfirmReset(true);
+    setConfirmReset(false);
+    void run(() => api.resetPricing());
   };
   return (
     <>
@@ -58,7 +87,7 @@ export function PricingEditor() {
                 <td>{r.source === "builtin" ? "Built-in" : "Yours"}</td>
                 <td>
                   {r.source === "user" && r.id !== null ? (
-                    <button type="button" className="btn ghost small" aria-label={`Delete price for ${r.model}`} onClick={() => api.deletePricing(r.id ?? 0).then(setRows)}>
+                    <button type="button" className="btn ghost small" aria-label={`Delete price for ${r.model}`} onClick={() => void run(() => api.deletePricing(r.id ?? 0))}>
                       <Icon name="trash" size={14} />
                     </button>
                   ) : null}
@@ -75,8 +104,8 @@ export function PricingEditor() {
           <button type="button" className="btn" disabled={!draft.model || draft.input === "" || draft.output === ""} onClick={save}>
             Add price
           </button>
-          <button type="button" className="btn ghost" onClick={() => api.resetPricing().then(setRows)}>
-            Reset to built-in
+          <button type="button" className={`btn ${confirmReset ? "danger" : "ghost"}`} onClick={reset}>
+            {confirmReset ? "Remove your prices?" : "Reset to built-in"}
           </button>
         </div>
         {problem ? (

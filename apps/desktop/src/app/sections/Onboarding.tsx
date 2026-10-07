@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import type { HealthReport } from "../../bindings/HealthReport";
 import type { PermissionStatus } from "../../bindings/PermissionStatus";
@@ -194,14 +194,26 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const next = STEPS[index + 1];
   const previous = STEPS[index - 1];
   const keyboard = settings?.keyboard;
+  const [finishError, setFinishError] = useState<string | null>(null);
+  const card = useRef<HTMLDivElement>(null);
+
+  // Move focus to the new step's heading, so keyboard and screen reader users
+  // start at the top of each step (the button they pressed may be gone).
+  useEffect(() => {
+    const heading = card.current?.querySelector<HTMLElement>("h1");
+    if (heading) {
+      heading.tabIndex = -1;
+      heading.focus();
+    }
+  }, [step]);
 
   const finish = async () => {
     try {
       replace(await api.completeOnboarding());
-    } catch {
-      // Continue anyway; the setting can be completed later.
+      onDone();
+    } catch (e) {
+      setFinishError(errorMessage(e));
     }
-    onDone();
   };
 
   const canContinue = step !== "permission" || Boolean(ready.permission);
@@ -213,7 +225,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="onboarding">
-      <div className="card onboarding-card">
+      <div className="card onboarding-card" ref={card}>
         <div className="onboarding-steps" aria-label={`Step ${index + 1} of ${STEPS.length}`}>
           {STEPS.map((s, i) => (
             <span key={s} data-done={i <= index} />
@@ -320,6 +332,13 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             </button>
           )}
         </div>
+        {finishError ? (
+          <div style={{ marginTop: 12 }}>
+            <Note tone="danger" icon="alert">
+              Mote couldn&apos;t save that onboarding is done: {finishError}
+            </Note>
+          </div>
+        ) : null}
       </div>
     </div>
   );

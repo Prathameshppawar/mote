@@ -89,8 +89,10 @@ export function WritingSection() {
   const addWord = () => {
     const value = word.trim().toLowerCase();
     if (!value || w.ignoredWords.includes(value)) return;
-    void update((s) => void (s.writing.ignoredWords = [...s.writing.ignoredWords, value].sort()));
-    setWord("");
+    // Keep what was typed if saving fails (the error is shown above the page).
+    void update((s) => void (s.writing.ignoredWords = [...s.writing.ignoredWords, value].sort())).then(
+      (saved) => saved && setWord(""),
+    );
   };
   return (
     <Page title="Writing" subtitle="Spelling and grammar help that fixes mistakes in place without rewriting what you meant.">

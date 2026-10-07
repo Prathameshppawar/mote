@@ -49,7 +49,7 @@ describe("Usage dashboard", () => {
     render(<App />);
     expect(await screen.findByText("Tokens today")).toBeInTheDocument();
     expect(screen.getByText("This month")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /Tokens\. Last 30 days/ })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: /Tokens\. Last 30 days/ })).toBeInTheDocument();
 
     // Every chart has a table view.
     const tokensCard = screen.getByText("Tokens", { selector: "figcaption" }).closest("figure");
@@ -60,7 +60,7 @@ describe("Usage dashboard", () => {
     // The range filter scopes the breakdowns below it.
     await user.click(screen.getByRole("button", { name: "Today" }));
     expect(screen.getByText("Today, per model.")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /Requests\. Today, by hour/ })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: /Requests\. Today, by hour/ })).toBeInTheDocument();
   });
 
   it("explains Mote usage vs provider usage", async () => {

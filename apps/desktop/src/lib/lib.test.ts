@@ -2,16 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { columnPath, labelIndices, niceTicks } from "../charts/scale";
 import { describeEvent } from "./activity";
-import {
-  formatCost,
-  formatCount,
-  formatDayLabel,
-  formatLatency,
-  formatPercent,
-  formatRelative,
-  formatSeconds,
-  formatTokens,
-} from "./format";
+import { formatCost, formatCount, formatDayLabel, formatLatency, formatPercent, formatRelative, formatSeconds, formatTokens, parsePrice, formatCostEstimate } from "./format";
 import { toCommandError } from "./ipc";
 import { acceleratorFromEvent, shortcutLabel } from "./shortcuts";
 
@@ -26,6 +17,19 @@ describe("format", () => {
   it("formats counts with separators", () => {
     expect(formatCount(1284)).toBe("1,284");
     expect(formatCount(28412)).toBe("28,412");
+  });
+
+  it("parses prices typed with a dot or a comma", () => {
+    expect(parsePrice("0.15")).toBe(0.15);
+    expect(parsePrice(" 1,5 ")).toBe(1.5);
+    expect(parsePrice("")).toBeNull();
+    expect(parsePrice("abc")).toBeNull();
+    expect(parsePrice("-1")).toBeNull();
+  });
+
+  it("marks incomplete cost estimates", () => {
+    expect(formatCostEstimate(0.42, true)).toBe("$0.42");
+    expect(formatCostEstimate(0.42, false)).toBe("$0.42+");
   });
 
   it("formats estimated cost", () => {
@@ -70,10 +74,18 @@ describe("shortcuts", () => {
     expect(acceleratorFromEvent({ ...base, code: "BracketRight", altKey: true }, true)).toBe("Alt+BracketRight");
     expect(acceleratorFromEvent({ ...base, code: "KeyA" }, true)).toBeNull();
     expect(acceleratorFromEvent({ ...base, code: "ShiftLeft", shiftKey: true }, true)).toBeNull();
+    expect(acceleratorFromEvent({ ...base, code: "KeyK", shiftKey: true }, true)).toBeNull();
   });
 });
 
 describe("chart scales", () => {
+  it("uses whole-number ticks for counts", () => {
+    expect(niceTicks(1, 4, true)).toEqual([0, 1]);
+    expect(niceTicks(2, 4, true)).toEqual([0, 1, 2]);
+    expect(niceTicks(7, 4, true)).toEqual([0, 2, 4, 6, 8]);
+    expect(niceTicks(87, 4, true)).toEqual([0, 20, 40, 60, 80, 100]);
+  });
+
   it("produces clean ticks from zero", () => {
     expect(niceTicks(87)).toEqual([0, 20, 40, 60, 80, 100]);
     expect(niceTicks(1_300)).toEqual([0, 500, 1000, 1500]);

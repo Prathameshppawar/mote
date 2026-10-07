@@ -13,6 +13,9 @@ export function ExcludedApps() {
   const [apps, setApps] = useState<AppInfo[]>([]);
   const [kind, setKind] = useState<ExclusionKind>("app");
   const [pattern, setPattern] = useState("");
+  // Choosing a running app only fills in the field; Add confirms. (Arrow keys on a
+  // closed select fire change events on Windows.)
+  const [picked, setPicked] = useState<AppInfo | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
   useEffect(() => {
@@ -26,11 +29,15 @@ export function ExcludedApps() {
     try {
       setRules(await api.addExclusion(k, value.trim(), name.trim()));
       setPattern("");
+      setPicked(null);
       setProblem(null);
     } catch (e) {
       setProblem(errorMessage(e));
     }
   };
+
+  /** The picked app's display name, or what was typed. */
+  const appName = () => (picked && picked.id === pattern.trim() ? picked.name : pattern);
 
   const excludedIds = new Set(rules.filter((r) => r.kind === "app").map((r) => r.pattern.toLowerCase()));
   const candidates = apps.filter((a) => !excludedIds.has(a.id.toLowerCase()));
@@ -95,10 +102,13 @@ export function ExcludedApps() {
               <select
                 className="select"
                 aria-label="Running application"
-                value=""
+                value={picked && picked.id === pattern ? picked.id : ""}
                 onChange={(e) => {
                   const app = candidates.find((a) => a.id === e.target.value);
-                  if (app) void add("app", app.id, app.name);
+                  if (app) {
+                    setPicked(app);
+                    setPattern(app.id);
+                  }
                 }}
                 style={{ flex: 1 }}
               >
@@ -117,10 +127,10 @@ export function ExcludedApps() {
                 placeholder="or type com.example.app / app.exe"
                 value={pattern}
                 onChange={(e) => setPattern(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && add("app", pattern, pattern)}
+                onKeyDown={(e) => e.key === "Enter" && add("app", pattern, appName())}
                 style={{ flex: 1 }}
               />
-              <button type="button" className="btn" disabled={!pattern.trim()} onClick={() => add("app", pattern, pattern)}>
+              <button type="button" className="btn" disabled={!pattern.trim()} onClick={() => add("app", pattern, appName())}>
                 Add
               </button>
             </div>

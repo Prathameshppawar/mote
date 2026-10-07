@@ -13,7 +13,13 @@ export function Diagnostics() {
   const [problem, setProblem] = useState<string | null>(null);
   const [toast, showToast] = useToast();
   const load = useCallback(() => {
-    api.diagnostics().then(setData, (e) => setProblem(errorMessage(e)));
+    api.diagnostics().then(
+      (d) => {
+        setData(d);
+        setProblem(null);
+      },
+      (e) => setProblem(errorMessage(e)),
+    );
   }, []);
   useEffect(load, [load]);
 

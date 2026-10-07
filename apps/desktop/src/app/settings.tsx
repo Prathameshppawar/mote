@@ -49,6 +49,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     [settings],
   );
 
+  const clearError = useCallback(() => setError(null), []);
+
   const value = useMemo<SettingsContextValue>(
     () => ({
       settings,
@@ -56,9 +58,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       replace: setSettings,
       error,
       fieldError: (path) => error?.fields.find((f) => f.field === path)?.message,
-      clearError: () => setError(null),
+      clearError,
     }),
-    [settings, update, error],
+    [settings, update, error, clearError],
   );
 
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;

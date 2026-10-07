@@ -24,7 +24,8 @@
   --accent-soft: rgba(79, 70, 229, 0.1);
   --accent-ink: #3730a3;
   --on-accent: #ffffff;
-  --focus-ring: 0 0 0 3px rgba(79, 70, 229, 0.35);
+  --switch-off: #8a8983;
+  --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
 
   --danger: #c0312c;
   --danger-soft: rgba(208, 59, 59, 0.1);
@@ -69,7 +70,8 @@
     --accent-soft: rgba(129, 140, 248, 0.15);
     --accent-ink: #c7d2fe;
     --on-accent: #0e0e1a;
-    --focus-ring: 0 0 0 3px rgba(129, 140, 248, 0.45);
+    --switch-off: #5c5b56;
+    --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
     --danger: #f07070;
     --danger-soft: rgba(230, 103, 103, 0.14);
     --success-text: #0ca30c;
@@ -103,7 +105,8 @@
   --accent-soft: rgba(129, 140, 248, 0.15);
   --accent-ink: #c7d2fe;
   --on-accent: #0e0e1a;
-  --focus-ring: 0 0 0 3px rgba(129, 140, 248, 0.45);
+  --switch-off: #5c5b56;
+  --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
   --danger: #f07070;
   --danger-soft: rgba(230, 103, 103, 0.14);
   --success-text: #0ca30c;

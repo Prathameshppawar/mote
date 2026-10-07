@@ -28,6 +28,17 @@ export function formatCost(usd: number): string {
   return `$${usd.toPrecision(2)}`;
 }
 
+/** An estimated cost, with "+" when some usage had no price (so the true total is higher). */
+export function formatCostEstimate(usd: number, complete: boolean): string {
+  return `${formatCost(usd)}${complete ? "" : "+"}`;
+}
+
+/** "0.15" or "0,15" → 0.15; anything else (or a negative number) → null. */
+export function parsePrice(text: string): number | null {
+  const value = Number(text.trim().replace(",", "."));
+  return text.trim() !== "" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
 /** 420 ms, 1.2 s */
 export function formatLatency(ms: number | null | undefined): string {
   if (ms === null || ms === undefined || !Number.isFinite(ms)) return "—";

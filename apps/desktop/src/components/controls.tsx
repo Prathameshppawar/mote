@@ -26,13 +26,31 @@ export function Switch({
   );
 }
 
-/** A settings row: title + help on the left, a control on the right. */
-export function Row({ title, help, children, htmlFor }: { title: ReactNode; help?: ReactNode; children?: ReactNode; htmlFor?: string }) {
+/** A settings row: title + help on the left, a control on the right. A
+ * validation error appears under the help text and is announced. */
+export function Row({
+  title,
+  help,
+  error,
+  children,
+  htmlFor,
+}: {
+  title: ReactNode;
+  help?: ReactNode;
+  error?: string;
+  children?: ReactNode;
+  htmlFor?: string;
+}) {
   return (
     <div className="row">
       <div className="row-text">
         <div className="row-title">{htmlFor ? <label htmlFor={htmlFor}>{title}</label> : title}</div>
         {help ? <div className="row-help">{help}</div> : null}
+        {error ? (
+          <div className="row-error" role="alert">
+            {error}
+          </div>
+        ) : null}
       </div>
       {children ? <div className="row-control">{children}</div> : null}
     </div>
@@ -214,11 +232,11 @@ export function Kbd({ children }: { children: ReactNode }) {
   return <kbd className="kbd">{children}</kbd>;
 }
 
+/** The live region stays mounted so screen readers announce each message. */
 export function Toast({ message }: { message: string | null }) {
-  if (!message) return null;
   return (
-    <div className="toast" role="status">
-      {message}
+    <div className="toast-region" role="status" aria-live="polite">
+      {message ? <div className="toast">{message}</div> : null}
     </div>
   );
 }

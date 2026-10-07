@@ -6,15 +6,16 @@ import { Overlay } from "./Overlay";
 
 describe("Overlay", () => {
   it("renders nothing until a view arrives, then hides on request", async () => {
-    const { container } = render(<Overlay />);
-    expect(container).toBeEmptyDOMElement();
+    render(<Overlay />);
+    // The live region stays mounted (so suggestions are announced) but is empty.
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
     await waitFor(() => expect(mockHasListener("overlay-view") && mockHasListener("overlay-hide")).toBe(true));
     await act(async () => mockEmit("overlay-view", sampleOverlay("correction")));
     expect(screen.getByText("completd")).toBeInTheDocument();
     expect(screen.getByText("completed")).toBeInTheDocument();
     expect(screen.getByText("Tab")).toBeInTheDocument();
     await act(async () => mockEmit("overlay-hide", null));
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
   });
 
   it("shows completion ghost text with the candidate counter", async () => {

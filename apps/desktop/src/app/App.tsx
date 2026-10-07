@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 
+import { Note } from "../components/controls";
 import { Icon, Logo, type IconName } from "../components/Icon";
 import { inTauri, subscribe } from "../lib/ipc";
 import { useSettings } from "./settingsContext";
@@ -95,13 +96,46 @@ function Sidebar({ route, navigate }: { route: string; navigate: (r: string) => 
   );
 }
 
+/** Save failures from any page, shown above the page until dismissed or the page changes. */
+function SaveError() {
+  const { error, clearError } = useSettings();
+  if (!error) return null;
+  const details = [...new Set(error.fields.map((f) => f.message))];
+  return (
+    <div className="save-error">
+      <Note tone="danger" icon="alert">
+        <strong>Couldn't save that change.</strong> {error.message}
+        {details.length ? (
+          <ul>
+            {details.map((d) => (
+              <li key={d}>{d}</li>
+            ))}
+          </ul>
+        ) : null}
+        <div>
+          <button type="button" className="btn small" onClick={clearError}>
+            Dismiss
+          </button>
+        </div>
+      </Note>
+    </div>
+  );
+}
+
 function Shell() {
-  const { settings } = useSettings();
+  const { settings, error, clearError } = useSettings();
   const [route, navigate] = useRoute();
+  useEffect(() => clearError(), [route, clearError]);
   if (!settings) {
     return (
       <div className="onboarding">
-        <span className="spinner" aria-label="Loading" />
+        {error ? (
+          <Note tone="danger" icon="alert">
+            Mote couldn't load its settings: {error.message}
+          </Note>
+        ) : (
+          <span className="spinner" role="status" aria-label="Loading" />
+        )}
       </div>
     );
   }
@@ -113,6 +147,7 @@ function Shell() {
     <div className="shell">
       <Sidebar route={section?.id ?? "general"} navigate={navigate} />
       <main className="content" key={section?.id}>
+        <SaveError />
         {section?.render()}
       </main>
     </div>

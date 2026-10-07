@@ -8,17 +8,7 @@ import { Meter, StatTile } from "../../charts/figures";
 import { TimeSeriesChart } from "../../charts/TimeSeriesChart";
 import { Card, Note, Page, Segmented } from "../../components/controls";
 import { Icon } from "../../components/Icon";
-import {
-  FEATURE_GROUP_LABELS,
-  FEATURE_LABELS,
-  formatCost,
-  formatCount,
-  formatDayLabel,
-  formatLatency,
-  formatPercent,
-  formatSeconds,
-  formatTokens,
-} from "../../lib/format";
+import { FEATURE_GROUP_LABELS, FEATURE_LABELS, formatCost, formatCostEstimate, formatCount, formatDayLabel, formatLatency, formatPercent, formatSeconds, formatTokens } from "../../lib/format";
 import { api, errorMessage, subscribe } from "../../lib/ipc";
 
 type Range = "today" | "30d";
@@ -59,7 +49,7 @@ export function Usage() {
             {problem}
           </Note>
         ) : (
-          <span className="spinner" aria-label="Loading usage" />
+          <span className="spinner" role="status" aria-label="Loading usage" />
         )}
       </Page>
     );
@@ -95,13 +85,17 @@ export function Usage() {
           hero
           label="Tokens today"
           value={formatTokens(d.today.totalTokens)}
-          sub={`${formatCount(d.today.requests)} requests · ${formatCost(d.today.estimatedCostUsd)} estimated`}
+          sub={`${formatCount(d.today.requests)} requests · ${formatCostEstimate(d.today.estimatedCostUsd, d.today.costComplete)} estimated`}
         />
-        <StatTile label="This week" value={formatTokens(d.week.totalTokens)} sub={`${formatCount(d.week.requests)} requests · ${formatCost(d.week.estimatedCostUsd)}`} />
+        <StatTile
+          label="This week"
+          value={formatTokens(d.week.totalTokens)}
+          sub={`${formatCount(d.week.requests)} requests · ${formatCostEstimate(d.week.estimatedCostUsd, d.week.costComplete)} estimated`}
+        />
         <StatTile
           label="This month"
           value={formatTokens(d.month.totalTokens)}
-          sub={`${formatCount(d.month.requests)} requests · ${formatCost(d.month.estimatedCostUsd)}${d.month.costComplete ? "" : "+"} estimated`}
+          sub={`${formatCount(d.month.requests)} requests · ${formatCostEstimate(d.month.estimatedCostUsd, d.month.costComplete)} estimated`}
         />
         <StatTile label="Avg latency today" value={formatLatency(d.today.avgLatencyMs)} sub={`error rate ${formatPercent(d.today.errorRate)}`} />
       </div>
@@ -165,10 +159,10 @@ export function Usage() {
       <div style={fading}>
         <div className="chart-grid-2">
           <ChartFrame title="Tokens" subtitle={rangeText} table={table((p) => p.totalTokens, formatTokens)} valueHeader="Tokens">
-            <TimeSeriesChart variant="area" points={series(points, (p) => p.totalTokens)} format={formatTokens} formatLabel={formatLabel} ariaLabel={`Tokens. ${rangeText}`} />
+            <TimeSeriesChart variant="area" points={series(points, (p) => p.totalTokens)} format={formatTokens} formatLabel={formatLabel} ariaLabel={`Tokens. ${rangeText}`} integer />
           </ChartFrame>
           <ChartFrame title="Requests" subtitle={rangeText} table={table((p) => p.requests, formatCount)} valueHeader="Requests">
-            <TimeSeriesChart variant="columns" points={series(points, (p) => p.requests)} format={formatCount} formatLabel={formatLabel} ariaLabel={`Requests. ${rangeText}`} />
+            <TimeSeriesChart variant="columns" points={series(points, (p) => p.requests)} format={formatCount} formatLabel={formatLabel} ariaLabel={`Requests. ${rangeText}`} integer />
           </ChartFrame>
           <ChartFrame title="Estimated cost" subtitle={`${rangeText} · list price`} table={table((p) => p.estimatedCostUsd, formatCost)} valueHeader="Est. cost">
             <TimeSeriesChart variant="line" points={series(points, (p) => p.estimatedCostUsd)} format={formatCost} formatLabel={formatLabel} ariaLabel={`Estimated cost. ${rangeText}`} />
