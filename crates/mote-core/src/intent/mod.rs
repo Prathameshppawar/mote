@@ -213,7 +213,15 @@ const PROMPT_HINTS: &[&str] = &[
     "ask me anything",
     "type your question",
     "ask follow-up",
+    "ask a follow-up",
     "what do you want to build",
+    "message copilot",
+    "message claude",
+    "message gemini",
+    "ask grok",
+    "ask meta ai",
+    "queue another message",
+    "tell claude",
     "ask grok",
     "ask deepseek",
     "edit code",
@@ -783,6 +791,26 @@ mod tests {
             previous_category: None,
             user_override: None,
         })
+    }
+
+    #[test]
+    fn ai_chat_inputs_inside_an_ide_are_prompts() {
+        let language = detect("refactor the parser so errors carry line numbers");
+        for placeholder in ["Ask Claude to edit…", "Queue another message…", "Ask Copilot or type / for commands"] {
+            let a = classify(&IntentSignals {
+                category: AppCategory::Ide,
+                role: Some(InputRole::TextArea),
+                is_multiline: true,
+                placeholder: Some(placeholder),
+                label: None,
+                text: "refactor the parser so errors carry line numbers",
+                language: &language,
+                clipboard_kind: None,
+                previous_category: None,
+                user_override: None,
+            });
+            assert_eq!(a.kind, IntentKind::Prompt, "{placeholder}");
+        }
     }
 
     #[test]

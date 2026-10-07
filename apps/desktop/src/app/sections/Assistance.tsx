@@ -1,9 +1,22 @@
 import { useState } from "react";
 
+import type { EnhanceStyle } from "../../bindings/EnhanceStyle";
+
 import { Card, Kbd, Note, Page, Row, Slider, ToggleRow } from "../../components/controls";
 import { Icon } from "../../components/Icon";
 import { shortcutLabel } from "../../lib/shortcuts";
 import { useSettings } from "../settingsContext";
+
+const ENHANCE_STYLES: { value: EnhanceStyle; label: string }[] = [
+  { value: "improve", label: "Improve: clearer and more specific" },
+  { value: "precise", label: "Make precise: goal, inputs, output" },
+  { value: "technical", label: "Make technical" },
+  { value: "structure", label: "Structure: labelled sections" },
+  { value: "debug", label: "Debug: root cause and fix" },
+  { value: "research", label: "Research: balanced, with sources" },
+  { value: "explain", label: "Explain" },
+  { value: "expand_context", label: "Expand context: placeholders" },
+];
 
 export function CompletionSection() {
   const { settings, update } = useSettings();
@@ -194,11 +207,26 @@ export function ContextSection() {
           onChange={(v) => update((s) => void (s.context.aiClassification = v))}
         />
         <ToggleRow
-          title="Prompt enhancement hints"
-          help="In AI prompt boxes, show a small “Enhance prompt” hint once per field."
+          title="Prompt enhancer"
+          help="In AI prompt boxes (ChatGPT, Claude, Gemini, Copilot and others), pause for a moment and press Tab on “Enhance prompt” to rewrite your prompt in place. Undo restores your version."
           checked={settings.prompts.showHint}
           onChange={(v) => update((s) => void (s.prompts.showHint = v))}
         />
+        <Row title="Enhancement style" help="How Tab rewrites your prompt. The command palette offers every style." htmlFor="enhance-style">
+          <select
+            id="enhance-style"
+            className="select"
+            value={settings.prompts.defaultStyle}
+            disabled={!settings.prompts.showHint}
+            onChange={(e) => update((s) => void (s.prompts.defaultStyle = e.target.value as EnhanceStyle))}
+          >
+            {ENHANCE_STYLES.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </Row>
       </Card>
       <div style={{ marginTop: 16 }}>
         <Note>

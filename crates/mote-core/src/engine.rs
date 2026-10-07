@@ -19,7 +19,7 @@ use tokio::sync::mpsc;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
-use crate::ai::AiClient;
+use crate::ai::{AiClient, Transformed};
 use crate::assistance::{
     apply_edit, correction_from_ai, grammar_candidate, spelling_correction, writing_applies, ClipboardWriteLog,
     Correction, EditPlan,
@@ -34,13 +34,15 @@ use crate::context::{ContextEvent, ContextEventKind, ContextManager};
 use crate::intent::apps::categorize;
 use crate::intent::{self, IntentAssessment, IntentKind, IntentSignals, IntentSource, IntentSubtype};
 use crate::language::{detect, LanguageLabel, LanguageProfile};
-use crate::platform::{AppInfo, CoordinateSpace, FocusedInput, Key, PlatformAdapter, PlatformError, ReadLimits, Rect};
+use crate::platform::{
+    AppInfo, CoordinateSpace, FocusedInput, Key, OsPlatform, PlatformAdapter, PlatformError, ReadLimits, Rect,
+};
 use crate::privacy::{ExclusionReason, ObservationDecision};
-use crate::prompts::{ClassificationPrompt, CompletionPrompt};
+use crate::prompts::{ClassificationPrompt, CompletionPrompt, TransformAction, TransformPrompt};
 use crate::providers::types::Feature;
 use crate::providers::ProviderError;
 use crate::settings::Settings;
-use crate::text::{fnv1a64, tail_at_word_boundary, tail_chars};
+use crate::text::{fnv1a64, tail_at_word_boundary, tail_chars, utf16_len};
 
 /// Something the observer saw.
 #[derive(Debug, Clone, PartialEq)]
@@ -88,6 +90,7 @@ pub enum EngineInput {
     CompletionReady { id: u64, result: Result<Option<String>, ProviderError> },
     ClassificationReady { id: u64, element_key: u64, result: Result<Option<IntentAssessment>, ProviderError> },
     GrammarReady { id: u64, result: Result<Option<String>, ProviderError> },
+    EnhanceReady { id: u64, result: Result<Transformed, ProviderError> },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -231,8 +234,64 @@ const CLASSIFICATION_RETRY_AFTER: Duration = Duration::from_secs(120);
 enum Active {
     Completion(SuggestionSet),
     Correction(Correction),
+    /// "Enhance prompt": Tab enhances the prompt in place.
     Hint,
+    /// The prompt is being enhanced; Esc cancels.
+    Enhancing,
     Context(ContextSuggestion),
+    /// A short message at the caret ("Prompt enhanced · ⌘Z to undo").
+    Notice(String),
+}
+
+/// A prompt being enhanced in place.
+struct PendingEnhance {
+    id: u64,
+    cancel: CancellationToken,
+    app_id: String,
+    element_key: u64,
+    /// The field's whole text when enhancement started. The result replaces it
+    /// only if the field still holds exactly this.
+    original: String,
+}
+
+/// How much of a prompt field is read to enhance it in place.
+const ENHANCE_LIMITS: ReadLimits = ReadLimits { before_caret: 12_000, after_caret: 12_000, selection: 12_000 };
+/// How long a notice stays at the caret.
+const NOTICE_LIFETIME: Duration = Duration::from_millis(3_500);
+
+/// Why the whole field could not be read for enhancement.
+#[derive(Debug)]
+enum FieldRead {
+    /// Focus moved to another field or app.
+    Moved,
+    /// The field holds more than Mote reads at once.
+    TooLong,
+}
+
+/// Reads the whole focused field, if it is still `element_key` in `app_id`.
+fn read_whole_field(platform: &dyn PlatformAdapter, app_id: &str, element_key: u64) -> Result<String, FieldRead> {
+    // Check the app before reading anything: focus may have moved to an excluded app.
+    if platform.active_application().map(|a| a.id).as_deref() != Some(app_id) {
+        return Err(FieldRead::Moved);
+    }
+    let input = platform.focused_input(ENHANCE_LIMITS).ok().flatten().ok_or(FieldRead::Moved)?;
+    if input.element_key != element_key || input.is_secure {
+        return Err(FieldRead::Moved);
+    }
+    let text =
+        format!("{}{}{}", input.text_before_caret, input.selected_text.unwrap_or_default(), input.text_after_caret);
+    let chars = |s: &str| s.chars().count();
+    let truncated = match input.total_length {
+        Some(total) => total > utf16_len(&text),
+        None => {
+            chars(&input.text_before_caret) >= ENHANCE_LIMITS.before_caret
+                || chars(&input.text_after_caret) >= ENHANCE_LIMITS.after_caret
+        }
+    };
+    if truncated {
+        return Err(FieldRead::TooLong);
+    }
+    Ok(text)
 }
 
 struct PendingCompletion {
@@ -279,7 +338,9 @@ pub struct Engine {
     cache: CompletionCache,
     dismissed: DismissedAnchors,
     checked: HashSet<u64>,
-    hinted: HashSet<u64>,
+    /// Fields where the user dismissed the "Enhance prompt" hint.
+    hint_dismissed: HashSet<u64>,
+    pending_enhance: Option<PendingEnhance>,
     offered_clipboard: Option<chrono::DateTime<Utc>>,
     ignored_words: HashSet<String>,
     provider_problem: Option<(EngineState, String)>,
@@ -330,7 +391,8 @@ impl Engine {
             cache: CompletionCache::new(64, Duration::from_secs(600)),
             dismissed: DismissedAnchors::default(),
             checked: HashSet::new(),
-            hinted: HashSet::new(),
+            hint_dismissed: HashSet::new(),
+            pending_enhance: None,
             offered_clipboard: None,
             ignored_words,
             provider_problem: None,
@@ -412,7 +474,7 @@ impl Engine {
                 self.checked.clear();
                 self.ai_intents.clear();
                 self.classification_failures.clear();
-                self.hinted.clear();
+                self.hint_dismissed.clear();
                 self.offered_clipboard = None;
                 self.reset_focus();
             }
@@ -422,6 +484,7 @@ impl Engine {
                 self.on_classification(id, element_key, result)
             }
             EngineInput::GrammarReady { id, result } => self.on_grammar(id, result),
+            EngineInput::EnhanceReady { id, result } => self.on_enhance_ready(id, result).await,
         }
         self.publish_status();
     }
@@ -499,6 +562,9 @@ impl Engine {
             p.cancel.cancel();
         }
         if let Some(p) = self.pending_grammar.take() {
+            p.cancel.cancel();
+        }
+        if let Some(p) = self.pending_enhance.take() {
             p.cancel.cancel();
         }
     }
@@ -656,6 +722,12 @@ impl Engine {
     fn on_text_changed(&mut self) {
         let Some(focus) = &self.focus else { return };
         let text_before = focus.text_before_caret.clone();
+        if matches!(self.active, Some(Active::Enhancing)) {
+            // Typing during enhancement: the user's version wins.
+            if let Some(p) = self.pending_enhance.take() {
+                p.cancel.cancel();
+            }
+        }
         match &mut self.active {
             Some(Active::Completion(set)) => match set.on_text(&text_before) {
                 SuggestionUpdate::Keep(_) => {
@@ -692,7 +764,7 @@ impl Engine {
         if kind == IntentKind::Prompt
             && self.settings.prompts.enhancement_enabled
             && self.settings.prompts.show_hint
-            && !self.hinted.contains(&focus.element_key)
+            && !self.hint_dismissed.contains(&focus.element_key)
         {
             self.hint_due = Some(now + HINT_DELAY);
         }
@@ -702,7 +774,7 @@ impl Engine {
         let now = Instant::now();
         if self.chip_expires.is_some_and(|t| t <= now) {
             self.chip_expires = None;
-            if matches!(self.active, Some(Active::Hint | Active::Context(_))) {
+            if matches!(self.active, Some(Active::Hint | Active::Context(_) | Active::Notice(_))) {
                 self.hide();
             }
         }
@@ -905,19 +977,132 @@ impl Engine {
         }
     }
 
+    /// After a longer pause in a prompt field, offer to enhance it. A
+    /// completion still on screen at that point gives way to the hint.
     fn try_hint(&mut self) {
         let Some(focus) = &self.focus else { return };
         if self.current_kind() != IntentKind::Prompt
-            || self.active.is_some()
+            || !matches!(self.active, None | Some(Active::Completion(_)))
             || self.pending_completion.is_some()
-            || self.hinted.contains(&focus.element_key)
+            || self.pending_enhance.is_some()
+            || self.hint_dismissed.contains(&focus.element_key)
             || focus.text_before_caret.trim().chars().count() < MIN_HINT_CHARS
         {
             return;
         }
-        self.hinted.insert(focus.element_key);
+        self.hide();
         self.chip_expires = Some(Instant::now() + CHIP_LIFETIME);
         self.show_suggestion(Active::Hint, Feature::PromptEnhancement);
+    }
+
+    /// Tab on the hint: read the whole prompt and ask for an enhanced version.
+    async fn start_enhance(&mut self) {
+        let Some(focus) = self.focus.clone() else { return };
+        let platform = self.deps.platform.clone();
+        let (app_id, element_key) = (focus.app.id.clone(), focus.element_key);
+        let read = tokio::task::spawn_blocking(move || read_whole_field(platform.as_ref(), &app_id, element_key)).await;
+        let original = match read {
+            Ok(Ok(text)) if !text.trim().is_empty() => text,
+            Ok(Err(FieldRead::TooLong)) => {
+                let palette = shortcut_label(&self.settings.keyboard.command_palette);
+                self.show_notice(&format!("This prompt is too long to enhance here. Try {palette}."));
+                return;
+            }
+            _ => {
+                self.pass_through(Key::Tab).await;
+                return;
+            }
+        };
+        let id = self.id();
+        let cancel = CancellationToken::new();
+        self.pending_enhance = Some(PendingEnhance {
+            id,
+            cancel: cancel.clone(),
+            app_id: focus.app.id.clone(),
+            element_key,
+            original: original.clone(),
+        });
+        self.active = Some(Active::Enhancing);
+        self.show_active();
+        let ai = self.deps.ai.clone();
+        let tx = self.tx.clone();
+        let style = self.settings.prompts.default_style;
+        let subtype = self.intent.as_ref().and_then(|i| i.subtype);
+        tokio::spawn(async move {
+            let language = detect(&original);
+            let action = TransformAction::EnhancePrompt { style };
+            let prompt = TransformPrompt {
+                action: &action,
+                text: &original,
+                language: &language,
+                kind: Some(IntentKind::Prompt),
+                subtype,
+                clipboard: None,
+            };
+            let result = ai.transform(&prompt, &cancel).await;
+            let _ = tx.send(EngineInput::EnhanceReady { id, result }).await;
+        });
+    }
+
+    async fn on_enhance_ready(&mut self, id: u64, result: Result<Transformed, ProviderError>) {
+        let Some(pending) = self.pending_enhance.take_if(|p| p.id == id) else { return };
+        if matches!(self.active, Some(Active::Enhancing)) {
+            self.hide();
+        }
+        let enhanced = match result {
+            Ok(t) if t.truncated => {
+                let palette = shortcut_label(&self.settings.keyboard.command_palette);
+                self.show_notice(&format!("The enhanced prompt was cut off. Try {palette} with a shorter prompt."));
+                return;
+            }
+            Ok(t) => t.text,
+            Err(ProviderError::Cancelled) => return,
+            Err(error) => {
+                self.on_provider_error(&error);
+                self.show_notice(&error.user_message());
+                return;
+            }
+        };
+        if enhanced.trim() == pending.original.trim() {
+            self.show_notice("This prompt is already clear.");
+            return;
+        }
+        let platform = self.deps.platform.clone();
+        let own = self.deps.own_clipboard_writes.clone();
+        let text = enhanced.clone();
+        let outcome = tokio::task::spawn_blocking(move || -> Result<bool, PlatformError> {
+            match read_whole_field(platform.as_ref(), &pending.app_id, pending.element_key) {
+                Ok(current) if current == pending.original => {}
+                // The user changed the prompt (or moved on) meanwhile: keep their version.
+                _ => return Ok(false),
+            }
+            apply_edit(platform.as_ref(), &EditPlan::ReplaceAll { text }, own.as_ref())?;
+            Ok(true)
+        })
+        .await;
+        let undo = if self.deps.platform.os() == OsPlatform::Macos { "⌘Z" } else { "Ctrl+Z" };
+        match outcome {
+            Ok(Ok(true)) => {
+                self.record(ContextEventKind::SuggestionAccepted { feature: Feature::PromptEnhancement });
+                self.show_notice(&format!("Prompt enhanced · {undo} to undo"));
+            }
+            Ok(Ok(false)) => self.show_notice("You changed the prompt, so Mote kept your version."),
+            _ => {
+                // Couldn't edit this field: hand the result over through the clipboard.
+                let copied = self.deps.platform.set_clipboard_text(&enhanced).is_ok();
+                self.show_notice(if copied {
+                    "Couldn't replace the prompt here. The enhanced prompt is on your clipboard."
+                } else {
+                    "Couldn't replace the prompt here."
+                });
+            }
+        }
+    }
+
+    fn show_notice(&mut self, text: &str) {
+        self.active = Some(Active::Notice(text.to_string()));
+        self.chip_expires = Some(Instant::now() + NOTICE_LIFETIME);
+        self.show_active();
     }
 
     fn offer_context(&mut self) {
@@ -975,7 +1160,13 @@ impl Engine {
                 };
                 view(OverlayKind::Correction, correction.corrected_tail.clone(), Some(detail), 0, 1, Some("Tab".into()))
             }
-            Active::Hint => view(OverlayKind::PromptHint, "Enhance prompt".into(), Some(palette), 0, 1, None),
+            Active::Hint => {
+                view(OverlayKind::PromptHint, "Enhance prompt".into(), Some("Tab".into()), 0, 1, Some("Tab".into()))
+            }
+            Active::Enhancing => {
+                view(OverlayKind::PromptHint, "Enhancing prompt…".into(), Some("Esc".into()), 0, 1, None)
+            }
+            Active::Notice(text) => view(OverlayKind::Notice, text.clone(), None, 0, 1, None),
             Active::Context(s) => {
                 let actions = s.actions.iter().map(|a| a.display_name()).collect::<Vec<_>>().join(" · ");
                 view(
@@ -1003,7 +1194,10 @@ impl Engine {
     fn show_active(&self) {
         let Some(view) = self.view() else { return };
         self.deps.shell.show(&view);
-        let accepts_keys = matches!(self.active, Some(Active::Completion(_) | Active::Correction(_)));
+        let accepts_keys = matches!(
+            self.active,
+            Some(Active::Completion(_) | Active::Correction(_) | Active::Hint | Active::Enhancing)
+        );
         self.deps.shell.set_suggestion_keys(accepts_keys);
     }
 
@@ -1035,6 +1229,13 @@ impl Engine {
             self.pass_through(Key::Tab).await;
             return;
         };
+        if matches!(active, Active::Enhancing) {
+            // Still working: let Tab reach the app and keep the indicator.
+            self.pass_through(Key::Tab).await;
+            self.active = Some(Active::Enhancing);
+            self.show_active();
+            return;
+        }
         self.deps.shell.hide();
         self.deps.shell.set_suggestion_keys(false);
         self.chip_expires = None;
@@ -1051,7 +1252,11 @@ impl Engine {
                 Feature::WritingAssistance,
                 None,
             ),
-            Active::Hint | Active::Context(_) => {
+            Active::Hint => {
+                self.start_enhance().await;
+                return;
+            }
+            Active::Enhancing | Active::Context(_) | Active::Notice(_) => {
                 self.pass_through(Key::Tab).await;
                 return;
             }
@@ -1104,8 +1309,20 @@ impl Engine {
                 }
                 Feature::WritingAssistance
             }
-            Active::Hint => Feature::PromptEnhancement,
+            Active::Hint => {
+                if let Some(focus) = &self.focus {
+                    self.hint_dismissed.insert(focus.element_key);
+                }
+                Feature::PromptEnhancement
+            }
+            Active::Enhancing => {
+                if let Some(p) = self.pending_enhance.take() {
+                    p.cancel.cancel();
+                }
+                Feature::PromptEnhancement
+            }
             Active::Context(_) => Feature::ContextAnalysis,
+            Active::Notice(_) => return,
         };
         self.record(ContextEventKind::SuggestionDismissed { feature });
     }

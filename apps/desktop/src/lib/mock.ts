@@ -68,7 +68,7 @@ export function defaultSettings(): Settings {
       inUnknown: false,
     },
     writing: { enabled: true, spelling: true, aiGrammar: true, ignoredWords: [] },
-    prompts: { enhancementEnabled: true, showHint: true },
+    prompts: { enhancementEnabled: true, showHint: true, defaultStyle: "improve" },
     context: { contextualSuggestions: true, clipboardTtlSecs: 180, aiClassification: true },
     privacy: { cloudAiEnabled: true, observeApplications: true, observeText: true, observeClipboard: true, contextRetention: "one_day" },
     usage: { analyticsEnabled: true, retentionDays: 180 },

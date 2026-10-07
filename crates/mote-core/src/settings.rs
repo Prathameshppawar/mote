@@ -7,6 +7,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::prompts::EnhanceStyle;
+
 /// Current settings schema version.
 pub const SETTINGS_VERSION: u32 = 1;
 
@@ -218,13 +220,16 @@ impl Default for WritingSettings {
 #[serde(rename_all = "camelCase", default)]
 pub struct PromptSettings {
     pub enhancement_enabled: bool,
-    /// Show a small "Enhance prompt" hint when Mote detects a prompt.
+    /// Show a small "Enhance prompt" hint when Mote detects a prompt; Tab on it
+    /// enhances the prompt in place.
     pub show_hint: bool,
+    /// The style used when enhancing from the hint.
+    pub default_style: EnhanceStyle,
 }
 
 impl Default for PromptSettings {
     fn default() -> Self {
-        Self { enhancement_enabled: true, show_hint: true }
+        Self { enhancement_enabled: true, show_hint: true, default_style: EnhanceStyle::Improve }
     }
 }
 

@@ -165,6 +165,8 @@ static RULES: &[Rule] = &[
             "jan.exe",
             "msty.exe",
             "app.msty.app",
+            "com.microsoft.m365copilot",
+            "m365copilot.exe",
         ],
         prefixes: &[],
         category: AppCategory::AiAssistant,

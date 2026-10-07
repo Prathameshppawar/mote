@@ -419,28 +419,119 @@ async fn rate_limits_pause_automatic_requests_and_report_status() {
     assert_eq!(h.provider.calls().len(), 1, "no requests while rate limited");
 }
 
-#[tokio::test(start_paused = true)]
-async fn prompt_fields_show_an_enhancement_hint_once() {
-    let mut settings = Settings::default();
-    settings.completion.in_prompts = false;
-    let h = harness(vec![], settings);
+/// A ChatGPT prompt box with completions off, so scripts go to enhancement.
+async fn prompt_field(h: &Harness, text: &str) -> FocusedInput {
     let chat = h.app("com.openai.chat", "ChatGPT", None).await;
-    let mut input = focused_input(chat, 3, "fix this code it is giving error");
+    let mut input = focused_input(chat, 3, text);
     input.placeholder = Some("Ask anything".into());
     h.focus(input.clone()).await;
+    input
+}
+
+fn prompt_settings() -> Settings {
+    let mut settings = Settings::default();
+    settings.completion.in_prompts = false;
+    settings
+}
+
+fn hint_count(h: &Harness) -> usize {
+    h.shell
+        .calls()
+        .iter()
+        .filter(|c| matches!(c, crate::testing::ShellCall::Show(v) if v.kind == OverlayKind::PromptHint && v.text == "Enhance prompt"))
+        .count()
+}
+
+#[tokio::test(start_paused = true)]
+async fn prompt_hint_returns_after_each_pause_until_dismissed() {
+    let h = harness(vec![], prompt_settings());
+    let input = prompt_field(&h, "fix this code it is giving error").await;
     h.wait(2_500).await;
     let view = h.shell.visible().expect("hint");
     assert_eq!(view.kind, OverlayKind::PromptHint);
+    assert_eq!(view.detail.as_deref(), Some("Tab"));
+    assert!(h.shell.keys_active(), "Tab is taken while the hint is visible");
+    // It expires, and comes back after the next pause.
     h.wait(9_000).await;
-    h.type_more(&input, " please").await;
+    let input = h.type_more(&input, " please").await;
+    h.wait(2_500).await;
+    assert_eq!(hint_count(&h), 2);
+    // Esc means "not for this prompt".
+    h.send(EngineInput::Shortcut(ShortcutAction::Dismiss)).await;
+    h.type_more(&input, " now").await;
     h.wait(3_000).await;
-    let hints = h
-        .shell
-        .calls()
-        .iter()
-        .filter(|c| matches!(c, crate::testing::ShellCall::Show(v) if v.kind == OverlayKind::PromptHint))
-        .count();
-    assert_eq!(hints, 1);
+    assert_eq!(hint_count(&h), 2);
+}
+
+#[tokio::test(start_paused = true)]
+async fn tab_on_the_hint_enhances_the_prompt_in_place() {
+    let enhanced =
+        "Find and fix the bug in the following code. Explain the root cause, then give the smallest correct fix.";
+    let h = harness(vec![Script::ok(enhanced, 80, 30)], prompt_settings());
+    prompt_field(&h, "fix this code it is giving error").await;
+    h.wait(2_500).await;
+    h.send(EngineInput::Shortcut(ShortcutAction::Accept)).await;
+    let working = h.shell.visible().expect("working indicator");
+    assert_eq!(working.text, "Enhancing prompt…");
+    h.wait(500).await;
+    assert_eq!(
+        h.platform.actions(),
+        vec![PlatformAction::SelectAll, PlatformAction::Typed(enhanced.to_string())],
+        "the whole prompt is replaced"
+    );
+    let notice = h.shell.visible().expect("notice");
+    assert_eq!(notice.kind, OverlayKind::Notice);
+    assert!(notice.text.starts_with("Prompt enhanced"), "{}", notice.text);
+    assert!(!h.shell.keys_active());
+    let call = &h.provider.calls()[0];
+    assert_eq!(call.feature, Feature::PromptEnhancement);
+    assert_eq!(h.sink.events().len(), 1, "metered once");
+    h.wait(4_000).await;
+    assert!(h.shell.visible().is_none(), "the notice goes away");
+}
+
+#[tokio::test(start_paused = true)]
+async fn typing_during_enhancement_keeps_the_users_version() {
+    let h = harness(
+        vec![Script::ok("A much better prompt about the error.", 80, 30).with_delay(Duration::from_secs(2))],
+        prompt_settings(),
+    );
+    let input = prompt_field(&h, "fix this code it is giving error").await;
+    h.wait(2_500).await;
+    h.send(EngineInput::Shortcut(ShortcutAction::Accept)).await;
+    h.type_more(&input, " in the parser").await;
+    h.wait(3_000).await;
+    assert!(
+        !h.platform.actions().iter().any(|a| matches!(a, PlatformAction::SelectAll)),
+        "nothing is replaced: {:?}",
+        h.platform.actions()
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn esc_cancels_an_enhancement() {
+    let h = harness(
+        vec![Script::ok("A much better prompt about the error.", 80, 30).with_delay(Duration::from_secs(2))],
+        prompt_settings(),
+    );
+    prompt_field(&h, "fix this code it is giving error").await;
+    h.wait(2_500).await;
+    h.send(EngineInput::Shortcut(ShortcutAction::Accept)).await;
+    h.send(EngineInput::Shortcut(ShortcutAction::Dismiss)).await;
+    h.wait(3_000).await;
+    assert!(h.shell.visible().is_none());
+    assert!(!h.shell.keys_active());
+    assert!(!h.platform.actions().iter().any(|a| matches!(a, PlatformAction::SelectAll)));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_completion_gives_way_to_the_hint_after_a_longer_pause() {
+    let h = harness(vec![Script::ok("in the parser module", 60, 6)], Settings::default());
+    prompt_field(&h, "fix this code it is giving error").await;
+    h.wait(800).await;
+    assert_eq!(h.shell.visible().map(|v| v.kind), Some(OverlayKind::Completion));
+    h.wait(2_000).await;
+    assert_eq!(h.shell.visible().map(|v| v.kind), Some(OverlayKind::PromptHint));
 }
 
 #[tokio::test(start_paused = true)]
