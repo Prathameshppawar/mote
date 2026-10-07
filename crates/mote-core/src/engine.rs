@@ -96,6 +96,8 @@ pub enum OverlayKind {
     Correction,
     PromptHint,
     Context,
+    /// A transient message from the app (e.g. "Copied to clipboard").
+    Notice,
 }
 
 /// What the overlay should display.

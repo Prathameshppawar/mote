@@ -1,0 +1,54 @@
+[package]
+name = "mote-desktop"
+description = "Mote — AI that stays in the flow. Desktop application."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+default-run = "mote-desktop"
+
+[lib]
+name = "mote_desktop_lib"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mote-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.7.1", features = [] }
+
+[dependencies]
+chrono.workspace = true
+keyring = { version = "3.6.3", features = ["apple-native", "windows-native"] }
+mote-core.workspace = true
+mote-platform.workspace = true
+mote-providers.workspace = true
+mote-storage.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tauri = { version = "2.12.1", features = ["tray-icon", "macos-private-api", "image-png"] }
+tauri-plugin-autostart = "2.7.0"
+tauri-plugin-global-shortcut = "2.4.0"
+tauri-plugin-opener = "2.7.0"
+tauri-plugin-single-instance = "2.5.2"
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+tracing-appender = "0.2.4"
+tracing-subscriber = { version = "0.3.20", features = ["env-filter", "fmt"] }
+ts-rs = { workspace = true, optional = true }
+
+[dev-dependencies]
+mote-core = { workspace = true, features = ["ts", "testing"] }
+ts-rs.workspace = true
+
+[features]
+# Enables `cargo test -p mote-desktop --features bindings export_bindings` to regenerate TypeScript types.
+bindings = ["dep:ts-rs", "mote-core/ts"]
+
+[lints]
+workspace = true

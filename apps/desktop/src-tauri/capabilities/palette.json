@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "palette-window",
+  "description": "The command palette: palette commands only.",
+  "windows": [
+    "palette"
+  ],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-palette-context",
+    "allow-palette-run",
+    "allow-palette-cancel",
+    "allow-palette-apply",
+    "allow-palette-close",
+    "allow-palette-open-main",
+    "allow-get-engine-status"
+  ]
+}

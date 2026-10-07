@@ -225,7 +225,9 @@ impl Observer {
         let mut focused = false;
         if policy.may_read_text(decision) {
             match self.platform.focused_input(self.config.limits) {
-                Ok(Some(input)) if !input.is_secure => {
+                // The input must belong to the app the privacy decision was made
+                // for; if focus moved to another app mid-poll, wait a tick.
+                Ok(Some(input)) if !input.is_secure && input.app.id == app.id => {
                     focused = true;
                     let signature = FocusSignature::of(&input);
                     if state.last_focus != Some(signature) {
@@ -368,6 +370,17 @@ mod tests {
         r.platform.set_focus(Some(focused_input(AppInfo::new("com.1password.1password", "1Password"), 1, "secret")));
         let obs = r.tick();
         assert!(obs.iter().all(|o| !matches!(o, Observation::Focus(Some(_)))));
+    }
+
+    #[test]
+    fn input_from_a_different_app_than_the_checked_one_is_ignored() {
+        let mut r = rig();
+        // The platform reports a frontmost app, but the focused input belongs to another app
+        // (the user switched between the two calls).
+        r.platform.set_focus(Some(focused_input(AppInfo::new("com.example.bank", "Bank"), 1, "account 1234")));
+        *r.platform.app.lock().unwrap() = Some(slack());
+        let obs = r.tick();
+        assert!(obs.iter().all(|o| !matches!(o, Observation::Focus(Some(_)))), "{obs:?}");
     }
 
     #[test]

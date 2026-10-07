@@ -220,8 +220,8 @@ fn dashboard_end_to_end_from_stored_events() {
     let expected_cost = (1_000.0 * 0.80 + 250.0 * 4.0 + 500.0 * 0.15 + 500.0 * 0.60) / 1e6;
     assert!((dash.today.estimated_cost_usd - expected_cost).abs() < 1e-12, "{}", dash.today.estimated_cost_usd);
     assert!((dash.today.error_rate - 1.0 / 3.0).abs() < 1e-9);
-    assert_eq!(dash.performance.rate_limit_events, 2);
-    assert_eq!(dash.performance.completion_median_latency_ms, Some(400.0));
+    assert_eq!(dash.breakdown_30d.performance.rate_limit_events, 2);
+    assert_eq!(dash.breakdown_30d.performance.completion_median_latency_ms, Some(400.0));
     assert_eq!(dash.month.requests, 4);
 }
 

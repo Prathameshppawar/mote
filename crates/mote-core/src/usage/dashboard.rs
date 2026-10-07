@@ -36,6 +36,8 @@ pub struct UsageBucket {
 /// Latency of one successful request.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LatencySample {
+    /// Local date of the request.
+    pub day: NaiveDate,
     pub feature: Feature,
     pub latency_ms: u32,
 }
@@ -171,6 +173,18 @@ pub struct TopFeature {
     pub share: f64,
 }
 
+/// Feature, model and performance breakdowns for one time range.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct RangeBreakdown {
+    pub summary: PeriodSummary,
+    pub by_feature: Vec<FeatureUsage>,
+    pub by_model: Vec<ModelUsage>,
+    pub performance: PerformanceStats,
+    pub top_feature: Option<TopFeature>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
@@ -181,17 +195,14 @@ pub struct UsageDashboard {
     pub week: PeriodSummary,
     pub month: PeriodSummary,
     pub last30_days: PeriodSummary,
-    /// Last 30 days.
-    pub by_feature: Vec<FeatureUsage>,
-    /// Last 30 days.
-    pub by_model: Vec<ModelUsage>,
+    /// Breakdowns for today, so one range filter can scope a whole view.
+    pub breakdown_today: RangeBreakdown,
+    /// Breakdowns for the last 30 days.
+    pub breakdown_30d: RangeBreakdown,
     /// One point per day for the last 30 days (oldest first).
     pub daily: Vec<SeriesPoint>,
     /// One point per hour for today.
     pub hourly: Vec<SeriesPoint>,
-    /// Last 30 days.
-    pub performance: PerformanceStats,
-    pub top_feature: Option<TopFeature>,
     /// Rate limits most recently reported by the provider (provider usage).
     pub provider_limits: Option<RateLimitSnapshot>,
     /// Models with usage but no known price.
@@ -313,6 +324,99 @@ fn mean(values: &[u32]) -> Option<f64> {
     (!values.is_empty()).then(|| values.iter().map(|v| f64::from(*v)).sum::<f64>() / values.len() as f64)
 }
 
+/// Accumulates one time range.
+#[derive(Default)]
+struct RangeAcc {
+    total: Acc,
+    by_feature: HashMap<Feature, Acc>,
+    by_model: BTreeMap<(String, String), Acc>,
+}
+
+impl RangeAcc {
+    fn add(&mut self, b: &UsageBucket, cost: Option<f64>) {
+        self.total.add(b, cost);
+        self.by_feature.entry(b.feature).or_default().add(b, cost);
+        self.by_model.entry((b.provider.clone(), b.model.clone())).or_default().add(b, cost);
+    }
+
+    fn finish<'a>(self, latencies: impl Iterator<Item = &'a LatencySample>) -> RangeBreakdown {
+        let requests = self.total.requests.max(1) as f64;
+        let mut features: Vec<FeatureUsage> = self
+            .by_feature
+            .iter()
+            .map(|(feature, acc)| FeatureUsage {
+                feature: *feature,
+                group: FeatureGroup::of(*feature),
+                requests: acc.requests,
+                total_tokens: acc.total,
+                estimated_cost_usd: acc.cost,
+                share: acc.requests as f64 / requests,
+                avg_latency_ms: acc.avg_latency(),
+            })
+            .collect();
+        features.sort_by(|a, b| b.requests.cmp(&a.requests).then_with(|| a.feature.as_str().cmp(b.feature.as_str())));
+
+        let mut models: Vec<ModelUsage> = self
+            .by_model
+            .iter()
+            .map(|((provider, model), acc)| ModelUsage {
+                provider: provider.clone(),
+                model: model.clone(),
+                requests: acc.requests,
+                input_tokens: acc.input,
+                output_tokens: acc.output,
+                total_tokens: acc.total,
+                estimated_cost_usd: (!acc.unpriced).then_some(acc.cost),
+                avg_latency_ms: acc.avg_latency(),
+            })
+            .collect();
+        models.sort_by(|a, b| b.total_tokens.cmp(&a.total_tokens).then_with(|| a.model.cmp(&b.model)));
+
+        let samples: Vec<&LatencySample> = latencies.collect();
+        let sorted = |filter: Option<Feature>| {
+            let mut v: Vec<u32> =
+                samples.iter().filter(|s| filter.is_none_or(|f| s.feature == f)).map(|s| s.latency_ms).collect();
+            v.sort_unstable();
+            v
+        };
+        let all = sorted(None);
+        let completion = sorted(Some(Feature::InlineCompletion));
+        let classification = sorted(Some(Feature::IntentClassification));
+        let performance = PerformanceStats {
+            avg_latency_ms: mean(&all).or_else(|| self.total.avg_latency()),
+            median_latency_ms: median(&all),
+            p95_latency_ms: percentile(&all, 95.0),
+            completion_avg_latency_ms: mean(&completion),
+            completion_median_latency_ms: median(&completion),
+            classification_avg_latency_ms: mean(&classification),
+            classification_median_latency_ms: median(&classification),
+            failed_requests: self.total.failed,
+            rate_limit_events: self.total.rate_limit_hits,
+            timeouts: self.total.timeouts,
+            cancelled: self.total.cancelled,
+            error_rate: self.total.error_rate(),
+        };
+
+        let mut groups: HashMap<FeatureGroup, u64> = HashMap::new();
+        for f in &features {
+            *groups.entry(f.group).or_default() += f.requests;
+        }
+        let top_feature = groups
+            .into_iter()
+            .filter(|(_, n)| *n > 0)
+            .max_by(|a, b| a.1.cmp(&b.1).then_with(|| format!("{:?}", b.0).cmp(&format!("{:?}", a.0))))
+            .map(|(group, n)| TopFeature { group, share: n as f64 / requests });
+
+        RangeBreakdown {
+            summary: self.total.summary(),
+            by_feature: features,
+            by_model: models,
+            performance,
+            top_feature,
+        }
+    }
+}
+
 /// Builds the dashboard.
 pub fn build(input: DashboardInput<'_>) -> UsageDashboard {
     let today = input.today;
@@ -320,10 +424,8 @@ pub fn build(input: DashboardInput<'_>) -> UsageDashboard {
     let month_start = today.with_day(1).unwrap_or(today);
     let window_start = today - Duration::days(29);
 
-    let (mut day_acc, mut week_acc, mut month_acc, mut window_acc) =
-        (Acc::default(), Acc::default(), Acc::default(), Acc::default());
-    let mut by_feature: HashMap<Feature, Acc> = HashMap::new();
-    let mut by_model: BTreeMap<(String, String), Acc> = BTreeMap::new();
+    let (mut week_acc, mut month_acc) = (Acc::default(), Acc::default());
+    let (mut today_range, mut window_range) = (RangeAcc::default(), RangeAcc::default());
     let mut daily: BTreeMap<NaiveDate, Acc> = BTreeMap::new();
     let mut hourly: BTreeMap<u8, Acc> = BTreeMap::new();
     let mut unpriced: Vec<String> = Vec::new();
@@ -334,7 +436,7 @@ pub fn build(input: DashboardInput<'_>) -> UsageDashboard {
             unpriced.push(b.model.clone());
         }
         if b.day == today {
-            day_acc.add(b, cost);
+            today_range.add(b, cost);
             hourly.entry(b.hour).or_default().add(b, cost);
         }
         if b.day >= week_start && b.day <= today {
@@ -344,42 +446,10 @@ pub fn build(input: DashboardInput<'_>) -> UsageDashboard {
             month_acc.add(b, cost);
         }
         if b.day >= window_start && b.day <= today {
-            window_acc.add(b, cost);
-            by_feature.entry(b.feature).or_default().add(b, cost);
-            by_model.entry((b.provider.clone(), b.model.clone())).or_default().add(b, cost);
+            window_range.add(b, cost);
             daily.entry(b.day).or_default().add(b, cost);
         }
     }
-
-    let window_requests = window_acc.requests.max(1) as f64;
-    let mut features: Vec<FeatureUsage> = by_feature
-        .iter()
-        .map(|(feature, acc)| FeatureUsage {
-            feature: *feature,
-            group: FeatureGroup::of(*feature),
-            requests: acc.requests,
-            total_tokens: acc.total,
-            estimated_cost_usd: acc.cost,
-            share: acc.requests as f64 / window_requests,
-            avg_latency_ms: acc.avg_latency(),
-        })
-        .collect();
-    features.sort_by(|a, b| b.requests.cmp(&a.requests).then_with(|| a.feature.as_str().cmp(b.feature.as_str())));
-
-    let mut models: Vec<ModelUsage> = by_model
-        .iter()
-        .map(|((provider, model), acc)| ModelUsage {
-            provider: provider.clone(),
-            model: model.clone(),
-            requests: acc.requests,
-            input_tokens: acc.input,
-            output_tokens: acc.output,
-            total_tokens: acc.total,
-            estimated_cost_usd: (!acc.unpriced).then_some(acc.cost),
-            avg_latency_ms: acc.avg_latency(),
-        })
-        .collect();
-    models.sort_by(|a, b| b.total_tokens.cmp(&a.total_tokens).then_with(|| a.model.cmp(&b.model)));
 
     let daily_points: Vec<SeriesPoint> = (0..30)
         .map(|offset| {
@@ -399,53 +469,20 @@ pub fn build(input: DashboardInput<'_>) -> UsageDashboard {
             }
         })
         .collect();
-
-    let mut all: Vec<u32> = input.latencies.iter().map(|s| s.latency_ms).collect();
-    all.sort_unstable();
-    let mut completion: Vec<u32> =
-        input.latencies.iter().filter(|s| s.feature == Feature::InlineCompletion).map(|s| s.latency_ms).collect();
-    completion.sort_unstable();
-    let mut classification: Vec<u32> =
-        input.latencies.iter().filter(|s| s.feature == Feature::IntentClassification).map(|s| s.latency_ms).collect();
-    classification.sort_unstable();
-    let performance = PerformanceStats {
-        avg_latency_ms: mean(&all).or_else(|| window_acc.avg_latency()),
-        median_latency_ms: median(&all),
-        p95_latency_ms: percentile(&all, 95.0),
-        completion_avg_latency_ms: mean(&completion),
-        completion_median_latency_ms: median(&completion),
-        classification_avg_latency_ms: mean(&classification),
-        classification_median_latency_ms: median(&classification),
-        failed_requests: window_acc.failed,
-        rate_limit_events: window_acc.rate_limit_hits,
-        timeouts: window_acc.timeouts,
-        cancelled: window_acc.cancelled,
-        error_rate: window_acc.error_rate(),
-    };
-
-    let mut groups: HashMap<FeatureGroup, u64> = HashMap::new();
-    for f in &features {
-        *groups.entry(f.group).or_default() += f.requests;
-    }
-    let top_feature = groups
-        .into_iter()
-        .filter(|(_, n)| *n > 0)
-        .max_by(|a, b| a.1.cmp(&b.1).then_with(|| format!("{:?}", b.0).cmp(&format!("{:?}", a.0))))
-        .map(|(group, n)| TopFeature { group, share: n as f64 / window_requests });
     unpriced.sort();
 
+    let breakdown_today = today_range.finish(input.latencies.iter().filter(|s| s.day == today));
+    let breakdown_30d = window_range.finish(input.latencies.iter().filter(|s| s.day >= window_start && s.day <= today));
     UsageDashboard {
         generated_at: input.generated_at,
-        today: day_acc.summary(),
+        today: breakdown_today.summary.clone(),
         week: week_acc.summary(),
         month: month_acc.summary(),
-        last30_days: window_acc.summary(),
-        by_feature: features,
-        by_model: models,
+        last30_days: breakdown_30d.summary.clone(),
+        breakdown_today,
+        breakdown_30d,
         daily: daily_points,
         hourly: hourly_points,
-        performance,
-        top_feature,
         provider_limits: input.provider_limits,
         unpriced_models: unpriced,
     }
@@ -555,23 +592,23 @@ mod tests {
         assert!(dash.today.cost_complete);
         assert!(!dash.last30_days.cost_complete, "mystery-model has no price");
         assert_eq!(dash.unpriced_models, vec!["mystery-model".to_string()]);
-        let mystery = dash.by_model.iter().find(|m| m.model == "mystery-model").unwrap();
+        let mystery = dash.breakdown_30d.by_model.iter().find(|m| m.model == "mystery-model").unwrap();
         assert_eq!(mystery.estimated_cost_usd, None);
     }
 
     #[test]
     fn feature_and_model_breakdowns() {
         let dash = build_sample(&[]);
-        let completion = dash.by_feature.iter().find(|f| f.feature == Feature::InlineCompletion).unwrap();
+        let completion = dash.breakdown_30d.by_feature.iter().find(|f| f.feature == Feature::InlineCompletion).unwrap();
         assert_eq!(completion.requests, 15);
         assert_eq!(completion.group, FeatureGroup::InlineCompletion);
-        let rewrite = dash.by_feature.iter().find(|f| f.feature == Feature::Rewrite).unwrap();
+        let rewrite = dash.breakdown_30d.by_feature.iter().find(|f| f.feature == Feature::Rewrite).unwrap();
         assert_eq!(rewrite.group, FeatureGroup::Other);
-        let shares: f64 = dash.by_feature.iter().map(|f| f.share).sum();
+        let shares: f64 = dash.breakdown_30d.by_feature.iter().map(|f| f.share).sum();
         assert!((shares - 1.0).abs() < 1e-9);
-        let qwen = dash.by_model.iter().find(|m| m.model == QWEN).unwrap();
+        let qwen = dash.breakdown_30d.by_model.iter().find(|m| m.model == QWEN).unwrap();
         assert_eq!((qwen.requests, qwen.input_tokens, qwen.output_tokens), (22, 1_500, 250));
-        assert_eq!(dash.top_feature.as_ref().unwrap().group, FeatureGroup::InlineCompletion);
+        assert_eq!(dash.breakdown_30d.top_feature.as_ref().unwrap().group, FeatureGroup::InlineCompletion);
     }
 
     #[test]
@@ -592,11 +629,11 @@ mod tests {
     fn performance_statistics() {
         let latencies: Vec<LatencySample> = [300, 400, 500, 600, 2_000]
             .into_iter()
-            .map(|ms| LatencySample { feature: Feature::InlineCompletion, latency_ms: ms })
-            .chain([LatencySample { feature: Feature::IntentClassification, latency_ms: 250 }])
+            .map(|ms| LatencySample { day: d("2026-10-06"), feature: Feature::InlineCompletion, latency_ms: ms })
+            .chain([LatencySample { day: d("2026-10-07"), feature: Feature::IntentClassification, latency_ms: 250 }])
             .collect();
         let dash = build_sample(&latencies);
-        let p = &dash.performance;
+        let p = &dash.breakdown_30d.performance;
         assert_eq!(p.completion_median_latency_ms, Some(500.0));
         assert_eq!(p.completion_avg_latency_ms, Some(760.0));
         assert_eq!(p.classification_median_latency_ms, Some(250.0));
@@ -605,6 +642,24 @@ mod tests {
         assert_eq!(p.rate_limit_events, 1);
         assert_eq!(p.failed_requests, 3);
         assert_eq!(p.cancelled, 4);
+    }
+
+    #[test]
+    fn today_breakdown_is_scoped_to_today() {
+        let latencies = [
+            LatencySample { day: d("2026-10-07"), feature: Feature::InlineCompletion, latency_ms: 300 },
+            LatencySample { day: d("2026-10-01"), feature: Feature::InlineCompletion, latency_ms: 900 },
+        ];
+        let dash = build_sample(&latencies);
+        let t = &dash.breakdown_today;
+        assert_eq!(t.summary, dash.today);
+        let features: Vec<Feature> = t.by_feature.iter().map(|f| f.feature).collect();
+        assert_eq!(features, vec![Feature::InlineCompletion, Feature::PromptEnhancement]);
+        assert_eq!(t.by_feature[0].requests, 15);
+        assert_eq!(t.performance.completion_median_latency_ms, Some(300.0), "only today's samples");
+        assert_eq!(t.performance.rate_limit_events, 1);
+        assert_eq!(dash.breakdown_30d.performance.completion_median_latency_ms, Some(600.0));
+        assert_eq!(t.top_feature.as_ref().unwrap().group, FeatureGroup::InlineCompletion);
     }
 
     #[test]
@@ -620,8 +675,8 @@ mod tests {
             generated_at: Utc::now(),
         });
         assert_eq!(dash.today, PeriodSummary { cost_complete: true, ..PeriodSummary::default() });
-        assert_eq!(dash.performance.median_latency_ms, None);
-        assert!(dash.top_feature.is_none());
+        assert_eq!(dash.breakdown_30d.performance.median_latency_ms, None);
+        assert!(dash.breakdown_30d.top_feature.is_none());
         assert_eq!(dash.hourly.len(), 1);
     }
 }

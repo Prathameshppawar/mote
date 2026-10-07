@@ -270,22 +270,25 @@ impl Storage {
         Ok(buckets)
     }
 
-    /// Latencies of successful requests since `since`, newest first.
+    /// Latencies of successful requests since `since`, newest first, with
+    /// each request's local date.
     pub fn latency_samples(&self, since: DateTime<Utc>, limit: usize) -> Result<Vec<LatencySample>> {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached(
-            "SELECT feature, latency_ms FROM usage_events
+            "SELECT strftime('%Y-%m-%d', ts / 1000, 'unixepoch', 'localtime'), feature, latency_ms FROM usage_events
              WHERE ts >= ?1 AND status = 'success' AND latency_ms IS NOT NULL
              ORDER BY ts DESC LIMIT ?2",
         )?;
         let rows = stmt.query_map(params![ms(since), i64::try_from(limit).unwrap_or(i64::MAX)], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?))
         })?;
         let mut samples = Vec::new();
         for row in rows {
-            let (feature, latency) = row?;
-            if let (Some(feature), Ok(latency_ms)) = (Feature::parse(&feature), u32::try_from(latency)) {
-                samples.push(LatencySample { feature, latency_ms });
+            let (day, feature, latency) = row?;
+            if let (Ok(day), Some(feature), Ok(latency_ms)) =
+                (day.parse::<NaiveDate>(), Feature::parse(&feature), u32::try_from(latency))
+            {
+                samples.push(LatencySample { day, feature, latency_ms });
             }
         }
         Ok(samples)
