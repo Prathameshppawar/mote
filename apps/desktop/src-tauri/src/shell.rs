@@ -13,7 +13,7 @@ use mote_core::platform::Rect;
 use crate::shortcuts;
 use crate::state::AppState;
 use crate::tray;
-use crate::windows::{self, clamp_to_monitor, overlay_origin, place_overlay, Placement};
+use crate::windows::{self, clamp_to_monitor, overlay_origin, place_overlay, units_per_css_pixel, Placement};
 
 /// Payload for the overlay window.
 #[derive(Debug, Clone, Serialize)]
@@ -48,22 +48,23 @@ impl DesktopShell {
     }
 
     /// Fallback anchor when the app does not expose a caret: near the pointer.
+    /// The pointer is in the platform's own space, as notices are.
     fn fallback_anchor(&self, view: &OverlayView) -> Option<Rect> {
-        let cursor = self.app.cursor_position().ok()?;
-        let scale = match view.coordinate_space {
-            mote_core::platform::CoordinateSpace::LogicalPoints => {
-                self.app.monitor_from_point(cursor.x, cursor.y).ok().flatten().map_or(1.0, |m| m.scale_factor())
-            }
-            mote_core::platform::CoordinateSpace::PhysicalPixels => 1.0,
-        };
-        Some(Rect { x: cursor.x / scale + 12.0, y: cursor.y / scale + 12.0, width: 1.0, height: 18.0 })
+        let (x, y) = windows::cursor_point(&self.app)?;
+        let unit = units_per_css_pixel(&self.app, view.coordinate_space, x, y);
+        Some(Rect { x: x + 12.0 * unit, y: y + 12.0 * unit, width: 1.0, height: 18.0 * unit })
     }
 
-    /// Positions and shows the overlay for `view` at the given size.
+    /// Positions and shows the overlay for `view`, whose rendered size is
+    /// `width` × `height` CSS pixels.
     fn present(&self, view: &OverlayView, width: f64, height: f64) {
         let Some(window) = self.app.get_webview_window(windows::OVERLAY) else { return };
         let Some(anchor) = view.anchor.or_else(|| self.fallback_anchor(view)) else { return };
-        let (x, y) = overlay_origin(anchor, Self::placement(view.kind), height);
+        // Work in the anchor's units: on physical-pixel platforms the CSS size
+        // is scaled by the monitor under the caret.
+        let unit = units_per_css_pixel(&self.app, view.coordinate_space, anchor.x, anchor.y);
+        let (width, height) = (width * unit, height * unit);
+        let (x, y) = overlay_origin(anchor, Self::placement(view.kind), height, unit);
         let (x, y) = clamp_to_monitor(&self.app, view.coordinate_space, x, y, width, height);
         if let Err(error) = place_overlay(&window, view.coordinate_space, x, y, width, height) {
             tracing::debug!(%error, "could not place overlay");
@@ -84,7 +85,14 @@ impl DesktopShell {
     }
 
     /// Shows a short notice (e.g. "Copied to clipboard") near the pointer.
+    /// If a suggestion was on screen (its keys still registered), it comes back
+    /// when the notice ends rather than staying invisible but active.
     pub fn notice(&self, text: &str) {
+        let underlying = if *lock(&self.keys_active) { lock(&self.current).clone() } else { None };
+        let coordinate_space = self
+            .app
+            .try_state::<std::sync::Arc<AppState>>()
+            .map_or(mote_core::platform::CoordinateSpace::LogicalPoints, |s| s.platform.coordinate_space());
         let view = OverlayView {
             kind: OverlayKind::Notice,
             text: text.to_string(),
@@ -92,7 +100,7 @@ impl DesktopShell {
             index: 0,
             count: 1,
             anchor: None,
-            coordinate_space: mote_core::platform::CoordinateSpace::LogicalPoints,
+            coordinate_space,
             accept_hint: None,
         };
         self.show(&view);
@@ -102,7 +110,10 @@ impl DesktopShell {
             tokio::time::sleep(std::time::Duration::from_secs(3)).await;
             if let Some(shell) = app.try_state::<std::sync::Arc<DesktopShell>>() {
                 if shell.seq.load(Ordering::SeqCst) == seq {
-                    shell.hide();
+                    match underlying.filter(|_| *lock(&shell.keys_active)) {
+                        Some(view) => shell.show(&view),
+                        None => shell.hide(),
+                    }
                 }
             }
         });

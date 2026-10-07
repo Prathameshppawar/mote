@@ -2,8 +2,8 @@
 //! suggestion overlay and the command palette.
 
 use tauri::{
-    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, PhysicalPosition, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder,
+    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, PhysicalPosition, PhysicalSize, WebviewUrl,
+    WebviewWindow, WebviewWindowBuilder,
 };
 
 use mote_core::platform::{CoordinateSpace, Rect};
@@ -108,11 +108,38 @@ pub fn palette(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .build()
 }
 
+/// The pointer position in the coordinates monitors are looked up in: logical
+/// points on macOS (where tao reports points × the primary display's scale),
+/// physical pixels elsewhere.
+pub fn cursor_point(app: &AppHandle) -> Option<(f64, f64)> {
+    let cursor = app.cursor_position().ok()?;
+    #[cfg(target_os = "macos")]
+    {
+        let scale = app.primary_monitor().ok().flatten().map_or(1.0, |m| m.scale_factor());
+        Some((cursor.x / scale, cursor.y / scale))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Some((cursor.x, cursor.y))
+    }
+}
+
+/// How many anchor-space units one CSS pixel spans at a point: 1 for logical
+/// points, the monitor's scale factor for physical pixels.
+pub fn units_per_css_pixel(app: &AppHandle, space: CoordinateSpace, x: f64, y: f64) -> f64 {
+    match space {
+        CoordinateSpace::LogicalPoints => 1.0,
+        CoordinateSpace::PhysicalPixels => {
+            app.monitor_from_point(x, y).ok().flatten().map_or(1.0, |m| m.scale_factor()).max(1.0)
+        }
+    }
+}
+
 /// Shows the palette centred on the monitor under the mouse pointer.
 pub fn show_palette(app: &AppHandle) -> tauri::Result<()> {
     let window = palette(app)?;
     let size = window.outer_size()?;
-    let monitor = app.cursor_position().ok().and_then(|p| app.monitor_from_point(p.x, p.y).ok().flatten());
+    let monitor = cursor_point(app).and_then(|(x, y)| app.monitor_from_point(x, y).ok().flatten());
     match monitor.or(app.primary_monitor()?) {
         Some(monitor) => {
             let area = monitor.work_area();
@@ -145,10 +172,11 @@ pub enum Placement {
 }
 
 /// Computes the overlay's top-left corner in the anchor's coordinate space.
-pub fn overlay_origin(anchor: Rect, placement: Placement, height: f64) -> (f64, f64) {
+/// `height` is in the same units; `unit` is one CSS pixel in those units.
+pub fn overlay_origin(anchor: Rect, placement: Placement, height: f64, unit: f64) -> (f64, f64) {
     match placement {
-        Placement::Inline => (anchor.x + 1.0, anchor.y + anchor.height / 2.0 - height / 2.0),
-        Placement::Below => (anchor.x - 10.0, anchor.y + anchor.height + 6.0),
+        Placement::Inline => (anchor.x + unit, anchor.y + anchor.height / 2.0 - height / 2.0),
+        Placement::Below => (anchor.x - 10.0 * unit, anchor.y + anchor.height + 6.0 * unit),
     }
 }
 
@@ -173,7 +201,8 @@ pub fn clamp_to_monitor(app: &AppHandle, space: CoordinateSpace, x: f64, y: f64,
     (x, y)
 }
 
-/// Moves and resizes the overlay; coordinates follow the platform adapter.
+/// Moves and resizes the overlay. Position and size are both in `space`
+/// units, following the platform adapter.
 pub fn place_overlay(
     window: &WebviewWindow,
     space: CoordinateSpace,
@@ -182,11 +211,14 @@ pub fn place_overlay(
     w: f64,
     h: f64,
 ) -> tauri::Result<()> {
-    window.set_size(LogicalSize::new(w, h))?;
     match space {
-        CoordinateSpace::LogicalPoints => window.set_position(LogicalPosition::new(x, y)),
+        CoordinateSpace::LogicalPoints => {
+            window.set_position(LogicalPosition::new(x, y))?;
+            window.set_size(LogicalSize::new(w, h))
+        }
         CoordinateSpace::PhysicalPixels => {
-            window.set_position(PhysicalPosition::new(x.round() as i32, y.round() as i32))
+            window.set_position(PhysicalPosition::new(x.round() as i32, y.round() as i32))?;
+            window.set_size(PhysicalSize::new(w.round().max(1.0) as u32, h.round().max(1.0) as u32))
         }
     }
 }
@@ -198,8 +230,10 @@ mod tests {
     #[test]
     fn overlay_origins() {
         let anchor = Rect { x: 100.0, y: 200.0, width: 1.0, height: 20.0 };
-        assert_eq!(overlay_origin(anchor, Placement::Inline, 30.0), (101.0, 195.0));
-        assert_eq!(overlay_origin(anchor, Placement::Below, 30.0), (90.0, 226.0));
+        assert_eq!(overlay_origin(anchor, Placement::Inline, 30.0, 1.0), (101.0, 195.0));
+        assert_eq!(overlay_origin(anchor, Placement::Below, 30.0, 1.0), (90.0, 226.0));
+        // At 150% on a physical-pixel platform, offsets scale with the display.
+        assert_eq!(overlay_origin(anchor, Placement::Below, 45.0, 1.5), (85.0, 229.0));
     }
 
     #[test]
