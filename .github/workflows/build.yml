@@ -84,7 +84,7 @@ jobs:
         if: runner.os == 'macOS' && env.APPLE_CERTIFICATE != ''
         run: |
           sudo security add-trusted-cert -d -r trustRoot -p codeSign \
-            -k /Library/Keychains/System.keychain apps/desktop/src-tauri/signing/mote-code-signing.pem
+            -k /Library/Keychains/System.keychain apps/desktop/src-tauri/signing/mote-code-signing.crt
       - name: Build and bundle
         uses: tauri-apps/tauri-action@v1
         env:
