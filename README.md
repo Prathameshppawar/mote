@@ -63,7 +63,7 @@ Get-FileHash .\Mote_<version>_x64-setup.exe -Algorithm SHA256  # Windows PowerSh
 2. Open Mote. Release builds are not yet notarized by Apple, so macOS blocks the first launch. Go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. (Or run `xattr -dr com.apple.quarantine /Applications/Mote.app` once.)
 3. Follow onboarding. When asked, enable Mote under **System Settings → Privacy & Security → Accessibility**. This is what lets Mote read the text field you're typing in and insert accepted suggestions.
 
-> From 1.1 on, Mote updates itself and keeps the Accessibility permission across updates. Coming from 1.0, macOS asks for the permission once more: if suggestions don't appear, remove Mote from the Accessibility list and add it again.
+> From 1.1 on, Mote updates itself and keeps its permissions across updates. Moving from 1.0 takes two one-time steps: choose **Always Allow** when macOS asks for your login password so Mote can read its saved key, and if suggestions don't appear, remove Mote from the Accessibility list and add it again.
 
 ### Windows
 
