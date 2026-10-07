@@ -1,4 +1,6 @@
-# Monthly, grouped dependency updates (security updates arrive as they are published).
+# Monthly, grouped minor and patch updates. Major versions are upgraded deliberately
+# (for example TypeScript, which typescript-eslint must support first, and @types/node,
+# which tracks the Node.js LTS used in CI). Security updates arrive as they are published.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -19,6 +21,9 @@ updates:
       cargo-minor-and-patch:
         update-types: [minor, patch]
     labels: [core]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: npm
     directory: /apps/desktop
@@ -29,3 +34,6 @@ updates:
       npm-minor-and-patch:
         update-types: [minor, patch]
     labels: [ui]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
