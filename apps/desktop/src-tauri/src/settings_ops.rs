@@ -46,6 +46,9 @@ pub fn set_paused(app: &AppHandle, state: &Arc<AppState>, minutes: Option<u32>) 
         None => ContextEventKind::Resumed,
     };
     let saved = save(app, state, settings)?;
+    if minutes.is_some() {
+        crate::palette::clear_session(state);
+    }
     let _ = state.context_events.send(ContextEvent { timestamp: Utc::now(), source: "mote".into(), kind });
     schedule_resume_refresh(app, &saved);
     Ok(saved)

@@ -6,7 +6,7 @@
 //! otherwise they are copied to the clipboard instead.
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -19,7 +19,7 @@ use mote_core::context::insights::{ContextAction, ContextSuggestion};
 use mote_core::context::manager::ClipboardSnapshot;
 use mote_core::intent::{IntentAssessment, IntentKind, IntentSubtype};
 use mote_core::language::{detect, LanguageLabel, LanguageProfile};
-use mote_core::platform::{AppInfo, FocusedInput, ReadLimits};
+use mote_core::platform::{AppInfo, FocusedInput, PermissionState, ReadLimits};
 use mote_core::prompts::{TransformAction, TransformPrompt};
 use mote_core::text::{head_chars, utf16_len};
 
@@ -28,8 +28,12 @@ use crate::shell::DesktopShell;
 use crate::state::AppState;
 use crate::windows;
 
-/// Field text read for palette actions (much larger than the observer's).
+/// Field text read for palette actions (much larger than the observer's, so
+/// actions can work on a whole prompt or message). Documented in the privacy model.
 const PALETTE_LIMITS: ReadLimits = ReadLimits { before_caret: 20_000, after_caret: 20_000, selection: 20_000 };
+/// A captured session is discarded after this long, even if the palette was
+/// never closed.
+const SESSION_TTL: Duration = Duration::from_secs(10 * 60);
 const PREVIEW_CHARS: usize = 280;
 /// Longest text the palette will apply.
 const MAX_APPLY_CHARS: usize = 100_000;
@@ -37,6 +41,7 @@ const MAX_APPLY_CHARS: usize = 100_000;
 /// What the palette knows about the user's context. In memory only.
 #[derive(Debug, Clone)]
 pub struct PaletteSession {
+    pub captured_at: Instant,
     pub app: Option<AppInfo>,
     pub focus: Option<FocusedInput>,
     pub field_truncated: bool,
@@ -144,6 +149,20 @@ fn preview(text: &str) -> TextPreview {
     }
 }
 
+/// The captured session, unless it has expired (then it is dropped).
+fn current_session(state: &AppState) -> Option<PaletteSession> {
+    let mut session = state.palette();
+    if session.as_ref().is_some_and(|s| s.captured_at.elapsed() > SESSION_TTL) {
+        *session = None;
+    }
+    session.clone()
+}
+
+/// Forgets captured text and clipboard content (close, apply, pause, clear, reset).
+pub fn clear_session(state: &AppState) {
+    *state.palette() = None;
+}
+
 fn field_text(focus: &FocusedInput) -> String {
     format!("{}{}{}", focus.text_before_caret, focus.selected_text.as_deref().unwrap_or(""), focus.text_after_caret)
 }
@@ -163,19 +182,42 @@ pub fn open(app: &AppHandle) {
     });
 }
 
-/// Reads the user's context, honouring the privacy policy.
+/// Reads the user's context, honouring the privacy policy exactly as the
+/// observer does: nothing is read (not even the window title) during Secure
+/// Input or without permission, and the focused field must belong to the
+/// application the policy was evaluated for.
 fn capture(state: &AppState) -> PaletteSession {
+    let empty = PaletteSession {
+        captured_at: Instant::now(),
+        app: None,
+        focus: None,
+        field_truncated: false,
+        intent: None,
+        language: None,
+        clipboard: None,
+        context_suggestion: None,
+        source: None,
+    };
+    let permissions = state.platform.permission_status();
+    if permissions.secure_input_active
+        || !matches!(permissions.accessibility, PermissionState::Granted | PermissionState::NotRequired)
+    {
+        return empty;
+    }
     let snapshot = state.engine.snapshot();
     let policy = state.policy.borrow().clone();
     let now = Utc::now();
-    let app = state.platform.active_application();
+    let Some(app) = state.platform.active_application() else { return empty };
     let title = state.platform.active_window().and_then(|w| w.title);
-    let decision = app.as_ref().map(|a| policy.evaluate(a, title.as_deref(), now));
+    let decision = policy.evaluate(&app, title.as_deref(), now);
+    if !decision.is_allowed() {
+        return empty;
+    }
     let mut focus = None;
     let mut field_truncated = false;
-    if decision.is_some_and(|d| policy.may_read_text(d)) {
+    if policy.may_read_text(decision) {
         if let Ok(Some(input)) = state.platform.focused_input(PALETTE_LIMITS) {
-            if !input.is_secure {
+            if !input.is_secure && input.app.id == app.id {
                 let read_units = utf16_len(&field_text(&input));
                 field_truncated = input.total_length.is_some_and(|total| total > read_units);
                 focus = Some(input);
@@ -183,20 +225,21 @@ fn capture(state: &AppState) -> PaletteSession {
         }
     }
     let language = focus.as_ref().map(|f| detect(&field_text(f)));
+    let clipboard_allowed = policy.may_read_clipboard(decision);
     PaletteSession {
-        app: app.filter(|_| decision.is_some_and(|d| d.is_allowed())),
+        app: Some(app),
         intent: if focus.is_some() { snapshot.intent } else { None },
         focus,
         field_truncated,
         language,
-        clipboard: snapshot.clipboard,
-        context_suggestion: snapshot.context_suggestion,
-        source: None,
+        clipboard: snapshot.clipboard.filter(|_| clipboard_allowed),
+        context_suggestion: snapshot.context_suggestion.filter(|_| clipboard_allowed),
+        ..empty
     }
 }
 
 pub fn context(state: &AppState) -> PaletteContext {
-    let session = state.palette().clone();
+    let session = current_session(state);
     let settings = state.settings();
     let Some(session) = session else {
         return PaletteContext {
@@ -242,7 +285,7 @@ pub fn context(state: &AppState) -> PaletteContext {
 /// Runs a transformation on the chosen source.
 pub async fn run(state: Arc<AppState>, request: PaletteRunRequest) -> CommandResult<PaletteRunResult> {
     request.action.validate().map_err(CommandError::invalid)?;
-    let session = state.palette().clone().ok_or_else(|| CommandError::invalid("Open the palette again."))?;
+    let session = current_session(&state).ok_or_else(|| CommandError::invalid("Open the palette again."))?;
     let focus = session.focus.as_ref();
     let clipboard = session.clipboard.as_ref();
     let is_context_action = matches!(request.action, TransformAction::UseContext { .. });
@@ -300,7 +343,8 @@ pub async fn apply(
     if request.text.chars().count() > MAX_APPLY_CHARS {
         return Err(CommandError::invalid("The text is too long to insert."));
     }
-    let session = state.palette().clone();
+    // Taken, not cloned: captured text is forgotten once the result is applied.
+    let session = state.palette().take().filter(|s| s.captured_at.elapsed() <= SESSION_TTL);
     windows::hide_palette(app);
     let shell = app.try_state::<Arc<DesktopShell>>().map(|s| s.inner().clone());
     let copy = |state: &AppState, notice: &str| -> CommandResult<PaletteApplyResult> {
@@ -335,6 +379,10 @@ pub async fn apply(
     let outcome = tauri::async_runtime::spawn_blocking(move || {
         platform.activate_application(&app_info)?;
         std::thread::sleep(Duration::from_millis(220));
+        // Read the field only if the captured (allowed) application is in front.
+        if platform.active_application().map(|a| a.id) != Some(app_info.id.clone()) {
+            return Err(mote_core::platform::PlatformError::Failed("another application is in front".into()));
+        }
         let current = platform.focused_input(ReadLimits::default())?;
         if current.as_ref().map(|c| c.element_key) != Some(expected_key) {
             return Err(mote_core::platform::PlatformError::Failed("focus moved to another field".into()));
@@ -352,12 +400,14 @@ pub async fn apply(
     }
 }
 
-/// Hides the palette, optionally returning focus to the original app.
+/// Hides the palette, optionally returning focus to the original app, and
+/// forgets the captured context.
 pub fn close(app: &AppHandle, state: &AppState, reactivate: bool) {
     windows::hide_palette(app);
     state.set_palette_cancel(None);
+    let session = state.palette().take();
     if reactivate {
-        if let Some(app_info) = state.palette().as_ref().and_then(|s| s.app.clone()) {
+        if let Some(app_info) = session.and_then(|s| s.app) {
             let platform = state.platform.clone();
             tauri::async_runtime::spawn_blocking(move || {
                 let _ = platform.activate_application(&app_info);

@@ -421,6 +421,7 @@ pub fn get_recent_activity(state: AppStateRef<'_>, limit: u32) -> CommandResult<
 #[tauri::command]
 pub fn clear_context(state: AppStateRef<'_>) -> CommandResult<()> {
     state.storage.clear_context()?;
+    crate::palette::clear_session(&state);
     let _ = state.engine.tx.try_send(EngineInput::ClearContext);
     Ok(())
 }
@@ -429,6 +430,7 @@ pub fn clear_context(state: AppStateRef<'_>) -> CommandResult<()> {
 #[tauri::command]
 pub fn reset_local_data(app: AppHandle, state: AppStateRef<'_>) -> CommandResult<Settings> {
     state.storage.reset_all()?;
+    crate::palette::clear_session(&state);
     state
         .secrets
         .delete(GROQ_ACCOUNT)
