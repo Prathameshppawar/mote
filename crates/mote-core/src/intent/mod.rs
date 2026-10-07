@@ -222,7 +222,6 @@ const PROMPT_HINTS: &[&str] = &[
     "ask meta ai",
     "queue another message",
     "tell claude",
-    "ask grok",
     "ask deepseek",
     "edit code",
     "add a follow-up",
