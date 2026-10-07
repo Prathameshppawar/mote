@@ -9,13 +9,13 @@ use objc2_core_foundation::{
 };
 
 /// A retained accessibility element that may be moved between threads.
-///
-/// SAFETY: AXUIElementRef is an immutable CF object; the Accessibility API is
-/// documented to be callable from any thread (requests are IPC to the target
-/// application), and CFRetain/CFRelease are thread-safe.
 pub struct Element(pub CFRetained<AXUIElement>);
 
+// SAFETY: AXUIElementRef is an immutable CF object; the Accessibility API is
+// documented to be callable from any thread (requests are IPC to the target
+// application), and CFRetain/CFRelease are thread-safe.
 unsafe impl Send for Element {}
+// SAFETY: as above; shared references only issue thread-safe AX requests.
 unsafe impl Sync for Element {}
 
 /// Messaging timeout for every element, so an unresponsive application can

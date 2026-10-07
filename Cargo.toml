@@ -52,6 +52,7 @@ dbg_macro = "warn"
 todo = "warn"
 unimplemented = "warn"
 print_stdout = "warn"
+undocumented_unsafe_blocks = "warn"
 
 [profile.release]
 codegen-units = 1
