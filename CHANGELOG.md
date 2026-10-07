@@ -6,6 +6,12 @@ All notable changes to Mote are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-08
+
+### Fixed
+
+- Claude Code's prompt box and VS Code's chat inputs (Copilot Chat, inline chat) are recognized as prompts by their accessible labels, so completions and "Enhance prompt" appear there. Their placeholders aren't visible to accessibility tools, so 1.1.0 classified them as code unless AI classification decided otherwise.
+
 ## [1.1.0] - 2026-10-08
 
 ### Added
@@ -53,6 +59,7 @@ First public release.
 - Typed text, prompts, model outputs, clipboard contents and window titles are never stored or logged. The database is readable only by your user account.
 - Each window gets only the IPC commands it needs (Tauri capabilities), under a strict content security policy.
 
-[Unreleased]: https://github.com/Prathameshppawar/mote/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/Prathameshppawar/mote/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/Prathameshppawar/mote/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/Prathameshppawar/mote/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Prathameshppawar/mote/releases/tag/v1.0.0
