@@ -4,8 +4,8 @@ Plans, not promises. Nothing on this page is implemented yet; shipped work moves
 
 ## Next (1.x)
 
-- **Trusted builds.** Developer ID signing and notarization on macOS, so Accessibility survives updates and Gatekeeper doesn't block the first launch. Code signing on Windows (for example Azure Trusted Signing).
-- **Updates.** In-app update checks and signed auto-update.
+- **Trusted builds.** Apple Developer ID signing and notarization, so Gatekeeper doesn't block the first manual install (1.1's own certificate already keeps the Accessibility permission across updates). Code signing on Windows (for example Azure Trusted Signing).
+- **New Microsoft Teams and Outlook.** Find a reliable way to read text from apps built on Microsoft WebView2, which expose it to assistive tools only intermittently.
 - **Windows hardening.** Hands-on testing across common apps (Office, Teams, Slack, browsers), caret placement on mixed-DPI setups, and UWP edge cases.
 - **Per-app preferences.** A Settings control for the intent override the classifier already supports ("treat this app as chat"), and per-app completion toggles.
 - **More providers.** Generic OpenAI-compatible endpoints (the `Generic` dialect exists), and local models through OpenAI-compatible servers such as Ollama or LM Studio, always optional.

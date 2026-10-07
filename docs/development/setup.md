@@ -53,7 +53,7 @@ crates/mote-storage        SQLite
 crates/mote-platform       macOS and Windows adapters
 apps/desktop/src-tauri     Tauri app (Rust)
 apps/desktop/src           React UI; src/bindings is generated, don't edit
-scripts/                   version, secret and label tooling
+scripts/                   version, secret, label and release tooling
 docs/                      architecture, privacy, development, product, decisions, releases
 ```
 
@@ -113,6 +113,7 @@ The app's database is at `~/Library/Application Support/io.github.prathameshppaw
 | `bash scripts/check-secrets.sh` | Scan tracked files for real credentials |
 | `scripts/sync-labels.sh [owner/repo]` | Create or update GitHub labels from `.github/labels.yml` |
 | `node scripts/third-party-notices.mjs` | Regenerate the dependency license tables in `THIRD_PARTY_NOTICES.md` |
+| `node scripts/update-manifest.mjs --dir <assets> --tag vX.Y.Z --repo owner/repo` | Write the updater's `latest.json` from a release's signed bundles (the release workflow runs it) |
 
 ## Building installers locally
 

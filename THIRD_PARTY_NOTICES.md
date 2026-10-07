@@ -40,7 +40,7 @@ The tables below list the open-source packages compiled into the macOS and Windo
 
 <!-- BEGIN GENERATED: scripts/third-party-notices.mjs -->
 
-### Rust crates (358)
+### Rust crates (369)
 
 | Crate | Version | License |
 |---|---|---|
@@ -119,6 +119,7 @@ The tables below list the open-source packages compiled into the macOS and Windo
 | fallible-streaming-iterator | 0.1.9 | MIT/Apache-2.0 |
 | fastrand | 2.5.0 | Apache-2.0 OR MIT |
 | fdeflate | 0.3.7 | MIT OR Apache-2.0 |
+| filetime | 0.2.29 | MIT/Apache-2.0 |
 | flate2 | 1.1.10 | MIT OR Apache-2.0 |
 | fnv | 1.0.7 | Apache-2.0 / MIT |
 | foldhash | 0.2.0 | Zlib |
@@ -126,8 +127,10 @@ The tables below list the open-source packages compiled into the macOS and Windo
 | foreign-types-macros | 0.2.4 | MIT/Apache-2.0 |
 | foreign-types-shared | 0.3.1 | MIT/Apache-2.0 |
 | form_urlencoded | 1.2.2 | MIT OR Apache-2.0 |
+| futures | 0.3.34 | MIT OR Apache-2.0 |
 | futures-channel | 0.3.34 | MIT OR Apache-2.0 |
 | futures-core | 0.3.34 | MIT OR Apache-2.0 |
+| futures-executor | 0.3.34 | MIT OR Apache-2.0 |
 | futures-io | 0.3.34 | MIT OR Apache-2.0 |
 | futures-macro | 0.3.34 | MIT OR Apache-2.0 |
 | futures-sink | 0.3.34 | MIT OR Apache-2.0 |
@@ -192,6 +195,7 @@ The tables below list the open-source packages compiled into the macOS and Windo
 | matchers | 0.2.0 | MIT |
 | memchr | 2.8.3 | Unlicense OR MIT |
 | mime | 0.3.17 | MIT OR Apache-2.0 |
+| minisign-verify | 0.2.5 | MIT |
 | miniz_oxide | 0.8.9 | MIT OR Zlib OR Apache-2.0 |
 | miniz_oxide | 0.9.1 | MIT OR Zlib OR Apache-2.0 |
 | mio | 1.2.4 | MIT |
@@ -220,6 +224,7 @@ The tables below list the open-source packages compiled into the macOS and Windo
 | objc2-foundation | 0.3.2 | MIT |
 | objc2-io-surface | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | objc2-metal | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
+| objc2-osa-kit | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | objc2-quartz-core | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | objc2-security | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | objc2-service-management | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
@@ -228,6 +233,7 @@ The tables below list the open-source packages compiled into the macOS and Windo
 | open | 5.4.4 | MIT |
 | option-ext | 0.2.0 | MPL-2.0 |
 | os_info | 3.15.0 | MIT |
+| osakit | 0.3.1 | MIT OR Apache-2.0 |
 | parking_lot | 0.12.5 | MIT OR Apache-2.0 |
 | parking_lot_core | 0.9.12 | MIT OR Apache-2.0 |
 | percent-encoding | 2.3.2 | MIT OR Apache-2.0 |
@@ -259,6 +265,7 @@ The tables below list the open-source packages compiled into the macOS and Windo
 | rustix | 1.1.5 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
 | rustls | 0.23.45 | Apache-2.0 OR ISC OR MIT |
 | rustls-pki-types | 1.15.1 | MIT OR Apache-2.0 |
+| rustls-platform-verifier | 0.7.1 | MIT OR Apache-2.0 |
 | rustls-webpki | 0.103.15 | ISC |
 | same-file | 1.0.6 | Unlicense/MIT |
 | schannel | 0.1.29 | MIT |
@@ -307,6 +314,7 @@ The tables below list the open-source packages compiled into the macOS and Windo
 | system-configuration | 0.7.0 | MIT OR Apache-2.0 |
 | system-configuration-sys | 0.6.0 | MIT OR Apache-2.0 |
 | tao | 0.37.1 | Apache-2.0 |
+| tar | 0.4.46 | MIT OR Apache-2.0 |
 | tauri | 2.12.1 | Apache-2.0 OR MIT |
 | tauri-codegen | 2.7.1 | Apache-2.0 OR MIT |
 | tauri-macros | 2.7.1 | Apache-2.0 OR MIT |
@@ -314,6 +322,7 @@ The tables below list the open-source packages compiled into the macOS and Windo
 | tauri-plugin-global-shortcut | 2.4.0 | Apache-2.0 OR MIT |
 | tauri-plugin-opener | 2.7.0 | Apache-2.0 OR MIT |
 | tauri-plugin-single-instance | 2.5.2 | Apache-2.0 OR MIT |
+| tauri-plugin-updater | 2.13.1 | Apache-2.0 OR MIT |
 | tauri-runtime | 2.12.1 | Apache-2.0 OR MIT |
 | tauri-runtime-wry | 2.12.1 | Apache-2.0 OR MIT |
 | tauri-utils | 2.10.1 | Apache-2.0 OR MIT |
@@ -392,6 +401,7 @@ The tables below list the open-source packages compiled into the macOS and Windo
 | winnow | 1.0.4 | MIT |
 | writeable | 0.6.4 | Unicode-3.0 |
 | wry | 0.57.0 | Apache-2.0 OR MIT |
+| xattr | 1.6.1 | MIT OR Apache-2.0 |
 | yoke | 0.8.3 | Unicode-3.0 |
 | yoke-derive | 0.8.4 | Unicode-3.0 |
 | zerofrom | 0.1.8 | Unicode-3.0 |
@@ -400,10 +410,11 @@ The tables below list the open-source packages compiled into the macOS and Windo
 | zerotrie | 0.2.5 | Unicode-3.0 |
 | zerovec | 0.11.8 | Unicode-3.0 |
 | zerovec-derive | 0.11.6 | Unicode-3.0 |
+| zip | 4.6.1 | MIT |
 | zlib-rs | 0.6.8 | Zlib |
 | zmij | 1.0.23 | MIT |
 
-Licenses: MIT OR Apache-2.0 (163), MIT (73), Apache-2.0 OR MIT (29), Zlib OR Apache-2.0 OR MIT (20), Unicode-3.0 (18), MIT/Apache-2.0 (12), Unlicense OR MIT (10), MPL-2.0 (5), BSD-3-Clause (3), Zlib (2), Apache-2.0 OR ISC OR MIT (2), MIT OR Zlib OR Apache-2.0 (2), BSD-3-Clause OR Apache-2.0 (2), ISC (2), Unlicense/MIT (2), Apache-2.0 (2), 0BSD OR MIT OR Apache-2.0 (1), BSD-3-Clause AND MIT (1), BSD-3-Clause/MIT (1), Apache-2.0 AND MIT (1), CC0-1.0 OR MIT-0 OR Apache-2.0 (1), (Apache-2.0 OR MIT) AND BSD-3-Clause (1), Apache-2.0 / MIT (1), MIT OR Apache-2.0 OR Zlib (1), Apache-2.0 AND ISC (1), Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT (1), (MIT OR Apache-2.0) AND Unicode-3.0 (1).
+Licenses: MIT OR Apache-2.0 (169), MIT (75), Apache-2.0 OR MIT (30), Zlib OR Apache-2.0 OR MIT (21), Unicode-3.0 (18), MIT/Apache-2.0 (13), Unlicense OR MIT (10), MPL-2.0 (5), BSD-3-Clause (3), Zlib (2), Apache-2.0 OR ISC OR MIT (2), MIT OR Zlib OR Apache-2.0 (2), BSD-3-Clause OR Apache-2.0 (2), ISC (2), Unlicense/MIT (2), Apache-2.0 (2), 0BSD OR MIT OR Apache-2.0 (1), BSD-3-Clause AND MIT (1), BSD-3-Clause/MIT (1), Apache-2.0 AND MIT (1), CC0-1.0 OR MIT-0 OR Apache-2.0 (1), (Apache-2.0 OR MIT) AND BSD-3-Clause (1), Apache-2.0 / MIT (1), MIT OR Apache-2.0 OR Zlib (1), Apache-2.0 AND ISC (1), Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT (1), (MIT OR Apache-2.0) AND Unicode-3.0 (1).
 
 ### npm packages (5)
 

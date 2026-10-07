@@ -89,6 +89,7 @@ When Mote starts (`apps/desktop/src-tauri/src/lib.rs`):
 | `UsageWriter` thread | Persists usage events, notifies the UI | Model calls never wait on the database |
 | Context writer thread | Persists metadata events when retention allows | Same |
 | Maintenance task | Prunes context and usage history hourly | Retention without user action |
+| Update task | Checks GitHub Releases a minute after launch and every six hours, downloads and verifies updates | Updates without blocking anything ([ADR 0008](../decisions/0008-updates-and-signing.md)) |
 
 ## Windows and IPC
 
@@ -102,7 +103,7 @@ The overlay never takes focus, so the app you are typing in keeps its caret, sel
 
 The permission set for each window is generated from the command list in `build.rs` and checked by Tauri on every call. The content security policy allows only the app's own scripts and the IPC endpoint.
 
-Events from Rust to the UI: `overlay-view`, `overlay-hide`, `engine-status`, `usage-updated`, `settings-changed`, `provider-changed`, `navigate`, `palette-open`.
+Events from Rust to the UI: `overlay-view`, `overlay-hide`, `engine-status`, `usage-updated`, `settings-changed`, `provider-changed`, `update-status`, `navigate`, `palette-open`.
 
 ## Life of a completion
 

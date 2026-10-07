@@ -120,7 +120,7 @@ After each observation the engine schedules at most one of each:
 |---|---|---|
 | Completion | debounce (450 ms) since the last keystroke | `should_complete` → cache → request |
 | Writing check | 700 ms after a word boundary, 1.6 s mid-word | local spelling; else grammar candidate → AI check |
-| Prompt hint | 2 s, with at least 15 characters in an AI prompt | show "Enhance prompt" |
+| Prompt hint | 2 s, with at least 15 characters in an AI prompt | show "Enhance prompt · Tab" (replacing a completion still on screen) |
 | Context chip | immediately when an insight applies | expires after 8 s |
 
 `completion::should_complete` requires completion to be enabled for the intent, the caret to be at the end, no selection, no trailing newline, at least `min_chars` (12) and two words, an unfinished sentence, at least `min_interval_ms` (1.2 s) since the previous request, and no recent dismissal at this point. If only the interval blocks it, the engine reschedules for the moment the interval ends.
@@ -135,6 +135,7 @@ Each request runs in a spawned task with a `CancellationToken`. Typing past the 
 - **Typing through.** If you type the beginning of the suggestion, it shrinks to the rest (`SuggestionSet::on_text`). Typing all of it counts as accepted. Typing something else hides it.
 - **Alternatives.** ⌥] asks for up to three alternatives (at a higher temperature, avoiding the ones already shown) and cycles through them.
 - **Accept (Tab).** The field is re-read. If the text still ends with what the suggestion was made for, the edit is applied (see below); otherwise Tab is passed through to your app.
+- **Enhance (Tab on the hint).** The whole prompt box is read (up to 12,000 characters on each side of the caret; a longer prompt is left to the palette), enhanced with the default style while "Enhancing prompt…" shows, and written back with `ReplaceAll` only if the field still holds exactly the text that was sent. Typing or Esc cancels; if the field can't be edited, the result goes to the clipboard. A notice confirms the outcome ("Prompt enhanced · ⌘Z to undo").
 - **Dismiss (Esc).** The suggestion is hidden. The completion anchor is remembered so it isn't offered again, and a dismissed spelling correction isn't offered again for that word until Mote restarts. The permanent ignore list is under Settings → Writing.
 
 ### Applying edits

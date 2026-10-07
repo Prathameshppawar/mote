@@ -59,13 +59,18 @@ Mote 1.0 uses Groq, over HTTPS, with your own API key. Requests go directly from
 | Inline completion | You pause typing (450 ms by default) in an eligible field | The last 600 characters before the caret, the app name, the detected context (for example "email") and a language instruction |
 | Context classification | A field's purpose is unclear from local signals | An excerpt of at most 400 characters, the app name and category, the field role and placeholder |
 | Grammar check | A finished sentence looks risky to the local heuristic | That one sentence and a language instruction |
+| Prompt enhancer | You press Tab on "Enhance prompt" | The prompt box's text (up to 12,000 characters each side of the caret) and the detected context |
 | Palette actions and prompt enhancement | You choose an action | The selected text (or the field's text), the detected context and, for "use copied content" actions, the copied text and the name of the app it came from |
 
 Never sent: window titles, other fields, other apps' content, your files, usage history, or anything from an excluded app.
 
 Spelling correction, language detection, context detection and usage accounting run entirely on your computer and send nothing.
 
-What Groq does with requests is governed by [Groq's privacy policy](https://groq.com/privacy-policy/) and your Groq account settings. Turn **Cloud AI** off and Mote makes no network requests at all apart from the ones you start explicitly from Settings (testing the connection, listing models).
+What Groq does with requests is governed by [Groq's privacy policy](https://groq.com/privacy-policy/) and your Groq account settings. Turn **Cloud AI** off and Mote makes no requests to Groq apart from the ones you start explicitly from Settings (testing the connection, listing models).
+
+## Update checks
+
+With **Update automatically** on (Settings → General, the default), Mote downloads its release manifest, `latest.json`, from GitHub a minute after launch and every six hours, and, when there is a newer version, the installer. These are plain downloads from `github.com`: Mote sends no identifier, text or usage data. GitHub sees the request like any download (your IP address, a user agent). Each update is verified against a signing key built into the app before it can be installed. Turn the setting off and Mote checks only when you click **Check for updates** in Settings → About.
 
 ## What is stored on your computer
 

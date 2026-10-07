@@ -92,7 +92,8 @@ Run this checklist on each platform before a release, using an installed build r
 - [ ] A risky sentence in an email draft gets a minimal grammar fix.
 
 **Prompts and palette**
-- [ ] In ChatGPT or Claude (app or browser), an "Enhance prompt" hint appears; the palette's enhancement styles return improved prompts.
+- [ ] In ChatGPT or Claude (app or browser) and in an IDE's AI chat (Claude Code, Copilot), pausing shows "Enhance prompt · Tab"; Tab replaces the prompt with an enhanced one, ⌘Z / Ctrl+Z restores it, and Esc cancels while it runs.
+- [ ] The palette's enhancement styles return improved prompts.
 - [ ] The palette opens with the shortcut, captures the selection, and Insert, Replace and Copy all work; the original app regains focus.
 - [ ] After two multi-line insertions in a row, the clipboard still holds what you copied before.
 
@@ -105,6 +106,12 @@ Run this checklist on each platform before a release, using an installed build r
 - [ ] With Cloud AI off, no requests are made (the Usage page stays unchanged) while spelling still works.
 - [ ] Copy diagnostics produces a report without text, app names or keys.
 - [ ] Reset local data removes settings, history and the API key.
+
+**App coverage**
+- [ ] Completions and the prompt enhancer work in VS Code (editor prose, chat inputs), Slack or another Electron app, and a text area on a web page in Chrome.
+
+**Updates**
+- [ ] Settings → About → Check for updates finds a newer published release, downloads it, and "Restart to Update" installs it; Accessibility keeps working after the restart.
 
 **Usage and display**
 - [ ] The Usage page updates after requests; the charts' table views match; costs are labelled as estimates.

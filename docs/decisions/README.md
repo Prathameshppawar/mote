@@ -11,5 +11,6 @@ Significant decisions, with their context and trade-offs. When a decision change
 | [0005](0005-intent-classification.md) | Intent and language: deterministic first, AI only when unsure | Accepted |
 | [0006](0006-privacy-boundaries.md) | Privacy boundaries enforced in code | Accepted |
 | [0007](0007-usage-analytics.md) | Usage analytics: local metering at the resilience layer, dated pricing, honest estimates | Accepted |
+| [0008](0008-updates-and-signing.md) | In-app updates from GitHub Releases, and a stable signing identity | Accepted |
 
 New records use the next number and the same sections: Context, Decision, Alternatives considered, Consequences.

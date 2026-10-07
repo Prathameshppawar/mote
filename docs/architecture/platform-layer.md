@@ -24,7 +24,7 @@ Every read takes a limit, and every implementation is written so that an exclude
 
 **Reading (`ax.rs`, `mod.rs`).**
 - The system-wide element gives the focused application and its focused element (`AXFocusedUIElement`). Every call has a 0.25 s messaging timeout, so a hung app can never hang Mote.
-- Chromium and Electron apps (Slack, VS Code, Discord, Notion, Chrome) build their accessibility tree only on request: Mote sets `AXManualAccessibility` on the app once per process, which avoids the side effects of `AXEnhancedUserInterface`.
+- Apps that render with Chromium build their accessibility tree only when an assistive tool asks, and until then report no focused element at all. So before asking for focus, Mote switches the tree on for the frontmost app, once per process: `AXManualAccessibility` for every app (the switch Electron documents for third-party tools; native apps ignore it), plus `AXEnhancedUserInterface` (the switch VoiceOver uses) for Chromium browsers and apps that embed Chromium or Microsoft WebView2, detected from the bundle identifier and the frameworks in the app bundle. If the system-wide query still finds nothing, the frontmost application is asked directly.
 - Role and subrole map to `InputRole` (text area, text field, search field, combo box, web document, terminal). `AXSecureTextField` marks a field as secure, and its value is never read.
 - Text is read with `AXStringForRange` for just the bounded ranges around the caret (`AXSelectedTextRange`, `AXNumberOfCharacters`). If an app doesn't support ranges, `AXValue` is read and immediately trimmed to the same bounds.
 - The caret rectangle comes from `AXBoundsForRange` on the character before or after the caret, with plausibility checks.
@@ -70,7 +70,8 @@ Every read takes a limit, and every implementation is written so that an exclude
 
 - Apps that don't expose their text to accessibility APIs (terminals with custom renderers, remote desktops, games, some canvas-based editors) can't be assisted.
 - Caret positions reported by some web apps can be approximate; the overlay is clamped to the visible work area of the right monitor.
-- On macOS, ad-hoc signed builds change identity with every version, so the Accessibility permission must be granted again after an update.
+- Apps built on Microsoft WebView2 (new Teams, new Outlook) expose their text to assistive tools only intermittently, even with both switches set.
+- Since 1.1, builds are signed with Mote's own certificate, so the Accessibility permission survives updates; moving from an ad hoc signed 1.0 needs one re-grant.
 
 ## Testing
 

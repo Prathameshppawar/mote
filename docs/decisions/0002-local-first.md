@@ -9,7 +9,7 @@ Mote sees what people type into every application: chats, email, documents, AI p
 
 ## Decision
 
-- **No Mote backend.** There are no accounts, sync, telemetry or crash-reporting service. The app talks to exactly one remote service: the AI provider the user configures, with the user's own API key, directly from their computer.
+- **No Mote backend.** There are no accounts, sync, telemetry or crash-reporting service. The app talks to the AI provider the user configures, with the user's own API key, directly from their computer, and (since 1.1, unless turned off) downloads update manifests and installers from GitHub Releases, sending nothing about the user (see [0008](0008-updates-and-signing.md)).
 - **All state is local.** Settings, usage metadata, pricing, exclusions and short-lived activity metadata live in one SQLite database in the user's application-data directory, readable only by that user. The API key lives in the OS credential store.
 - **Metadata, not content.** Nothing typed, copied, prompted or generated is written to disk; content stays in memory for bounded times (see [0006](0006-privacy-boundaries.md)).
 - **Local-first is not local-only inference.** AI runs at the configured provider (Groq in 1.0) for speed and quality with zero setup. A local model is optional future work through the provider abstraction ([0003](0003-provider-abstraction.md)), never a requirement.

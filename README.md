@@ -23,7 +23,7 @@ Mote lives in the menu bar (macOS) or system tray (Windows). It watches the text
 | **Inline completion** | Ghost-text continuations as you type, in chat apps, email, AI prompts and notes. **Tab** accepts; **⌥]** / **⌥[** (Alt on Windows) cycles through alternatives. |
 | **Spelling, locally** | Misspelled words are caught on your machine with a 82,000-word frequency dictionary. Tab accepts the fix. No tokens, no network. |
 | **Grammar that keeps your voice** | When a finished sentence looks risky, one sentence is checked by AI and the minimal correction is offered. |
-| **Better prompts** | When you're typing to ChatGPT, Claude, Gemini or similar, Mote offers to enhance the prompt: improve, make precise, make technical, structure, debug, research, explain, expand context, or your own instruction. |
+| **Prompt enhancer** | Typing to ChatGPT, Claude, Gemini, Copilot or Claude Code? Pause, and press **Tab** on "Enhance prompt" to rewrite your prompt in place (undo brings yours back). The palette offers every style: improve, make precise, make technical, structure, debug, research, explain, expand context, or your own instruction. |
 | **Command palette** | **⌘⇧Space** / **Ctrl+Shift+Space** on any selection or text field: fix, rewrite, change tone, shorten, summarize, explain, translate, continue writing, create a prompt. |
 | **Context-aware** | Copy an error, a stack trace, code or an issue link, then switch apps, and Mote suggests the obvious next step ("Debug this error", "Create coding task", …). |
 | **Hinglish and Marathi, as written** | Mixed English-Hindi, romanized Hindi and Marathi, and Devanagari are detected and preserved. Mote never translates your text unless you ask. |
@@ -33,7 +33,8 @@ Mote lives in the menu bar (macOS) or system tray (Windows). It watches the text
 
 - **Text is read only from the field you're typing in**, only around the caret, and only when Mote is enabled, not paused, and the app or window isn't excluded.
 - **Never observed:** password managers, password fields in every app, anything while macOS Secure Input is on, and Mote's own windows. Add your own exclusions by app or window title (for example "bank").
-- **Sent to Groq** (the AI provider you configure) only for the feature in use: the end of your draft (up to 600 characters) for completion, one sentence for grammar, or the selection for palette actions, plus the app name and detected language. One switch turns all cloud AI off.
+- **Sent to Groq** (the AI provider you configure) only for the feature in use: the end of your draft (up to 600 characters) for completion, one sentence for grammar, the prompt you enhance, or the selection for palette actions, plus the app name and detected language. One switch turns all cloud AI off.
+- **Update checks** download Mote's release manifest from GitHub and send nothing about you. You can turn them off.
 - **Stored locally:** settings, usage metadata (token counts, latency, model, feature: no text) and short-lived activity metadata (app names, no titles or text), in a SQLite file only your user account can read. Your API key is kept in the macOS Keychain or Windows Credential Manager.
 - **Never stored or logged:** typed text, prompts, model outputs, clipboard contents, window titles or API keys.
 
@@ -53,7 +54,7 @@ Each release includes `SHA256SUMS.txt`. To verify a download:
 
 ```sh
 shasum -a 256 -c SHA256SUMS.txt --ignore-missing          # macOS
-Get-FileHash .\Mote_1.0.0_x64-setup.exe -Algorithm SHA256  # Windows PowerShell
+Get-FileHash .\Mote_<version>_x64-setup.exe -Algorithm SHA256  # Windows PowerShell
 ```
 
 ### macOS
@@ -62,7 +63,7 @@ Get-FileHash .\Mote_1.0.0_x64-setup.exe -Algorithm SHA256  # Windows PowerShell
 2. Open Mote. Release builds are not yet notarized by Apple, so macOS blocks the first launch. Go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. (Or run `xattr -dr com.apple.quarantine /Applications/Mote.app` once.)
 3. Follow onboarding. When asked, enable Mote under **System Settings → Privacy & Security → Accessibility**. This is what lets Mote read the text field you're typing in and insert accepted suggestions.
 
-> After installing a new version, macOS may treat it as a different app. If suggestions stop appearing, remove Mote from the Accessibility list and enable it again.
+> From 1.1 on, Mote updates itself and keeps the Accessibility permission across updates. Coming from 1.0, macOS asks for the permission once more: if suggestions don't appear, remove Mote from the Accessibility list and add it again.
 
 ### Windows
 
@@ -79,13 +80,13 @@ Mote uses [Groq](https://groq.com) for its AI features. Create a key at [console
 | Shortcut | Action |
 |---|---|
 | **⌘⇧Space** / **Ctrl+Shift+Space** | Open the command palette (configurable) |
-| **Tab** | Accept the visible suggestion |
+| **Tab** | Accept the visible suggestion, or enhance the prompt when "Enhance prompt" is showing |
 | **Esc** | Dismiss it |
 | **⌥]** / **⌥[** (Alt+] / Alt+[ on Windows) | Next / previous alternative |
 
 Tab, Esc and the alternative keys are captured only while a suggestion is on screen; otherwise they reach your app as usual.
 
-From the tray menu you can pause Mote for an hour, switch assistance, completion or context awareness on and off, open the command palette, and jump to Usage, Privacy, Diagnostics or Settings.
+From the tray menu you can pause Mote for an hour, switch assistance, completion or context awareness on and off, open the command palette, jump to Usage, Privacy, Diagnostics or Settings, and **Restart to Update** when a new version has been downloaded.
 
 ## Supported platforms
 
@@ -94,7 +95,7 @@ From the tray menu you can pause Mote for an hour, switch assistance, completion
 | macOS | 11 Big Sur | Apple Silicon, Intel | Supported; developed and tested on macOS 26 (Apple Silicon) |
 | Windows | 10 or 11 | x64 | Supported; built and unit-tested in CI, see [known limitations](docs/releases/v1.0.0.md#known-limitations) |
 
-Mote reads text through the operating system's accessibility APIs (Accessibility on macOS, UI Automation on Windows), so it can assist wherever an app exposes its text fields to them. That includes native apps and most browsers and Electron apps. Apps that draw their own text without exposing it (some games, terminals, remote desktop clients) can't be assisted.
+Mote reads text through the operating system's accessibility APIs (Accessibility on macOS, UI Automation on Windows), so it can assist wherever an app exposes its text fields to them. That includes native apps, Chrome-based browsers and Electron apps such as VS Code, Slack and Notion (Mote switches on the accessibility tree they keep off by default). Apps that draw their own text without exposing it (some games, terminals, remote desktop clients) can't be assisted, and the new Microsoft Teams and Outlook desktop apps expose their text unreliably.
 
 ## Build from source
 

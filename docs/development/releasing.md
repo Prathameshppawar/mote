@@ -56,6 +56,7 @@ Assets of a release:
 | `Mote_X.Y.Z_aarch64.app.tar.gz`, `Mote_X.Y.Z_x64.app.tar.gz` | macOS app bundles |
 | `Mote_X.Y.Z_x64-setup.exe` | Windows NSIS installer (per user, no administrator rights) |
 | `Mote_X.Y.Z_x64_en-US.msi` | Windows MSI (per machine, needs administrator rights) |
+| `*.sig`, `latest.json` | update signatures and the manifest the in-app updater reads |
 | `SHA256SUMS.txt` | SHA-256 of every file above |
 
 If a build job fails for a transient reason (a network error, a runner problem), use **Re-run failed jobs**. A re-run uses the tagged commit, so for a code or workflow fix, commit the fix and move the tag:
@@ -69,20 +70,26 @@ Either way the existing draft is reused and assets with the same names are repla
 
 After publishing, download one installer per platform, check it against `SHA256SUMS.txt`, and run a quick smoke test.
 
-## Code signing
+## Code signing and update keys
 
-Without signing secrets, macOS builds are ad-hoc signed (`signingIdentity: "-"`), and Windows installers are unsigned. Users see Gatekeeper and SmartScreen prompts, as the release notes explain.
+Two keys sign every release. Both private keys live only in the repository's secrets and in an offline backup; never commit them.
 
-To sign and notarize macOS builds, add these repository secrets. `build.yml` exports only the ones that are set:
-
-| Secret | |
+| Secret | Purpose |
 |---|---|
-| `APPLE_CERTIFICATE` | base64 of the Developer ID Application `.p12` |
-| `APPLE_CERTIFICATE_PASSWORD` | its password |
-| `APPLE_SIGNING_IDENTITY` | e.g. `Developer ID Application: Name (TEAMID)` |
-| `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` | notarization (app-specific password) |
+| `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD` | base64 `.p12` of the macOS signing identity, and its password |
+| `APPLE_SIGNING_IDENTITY` | the identity's name, `Mote Code Signing` |
+| `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | the updater key that signs update bundles; the app only installs updates that verify against the public key in `tauri.conf.json` (`plugins.updater.pubkey`) |
+| `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` | optional notarization, once a Developer ID certificate replaces the self-signed one |
 
-Windows signing (for example Azure Trusted Signing) isn't configured yet.
+**macOS signing.** Mote is signed with a self-signed "Mote Code Signing" certificate, so its identity, and with it the Accessibility permission, stays the same across updates ([ADR 0008](../decisions/0008-updates-and-signing.md)). Its public half is committed at `apps/desktop/src-tauri/signing/mote-code-signing.crt`, and `build.yml` marks it as trusted on the runner before signing, because `codesign` only uses trusted identities. Changing the certificate changes the app's identity: every user would have to grant Accessibility again, so keep it (it is valid until 2036).
+
+**Update key.** Losing `TAURI_SIGNING_PRIVATE_KEY` strands every installed copy on its current version (a new key means a new public key, which only a manual install delivers). Keep the backup safe.
+
+Windows installers are not code-signed yet (for example with Azure Trusted Signing), so SmartScreen asks for confirmation.
+
+### Update manifest
+
+Each build uploads its update bundle and signature: `Mote_X.Y.Z_aarch64.app.tar.gz(.sig)`, `Mote_X.Y.Z_x64.app.tar.gz(.sig)`, `Mote_X.Y.Z_x64-setup.exe(.sig)` and `Mote_X.Y.Z_x64_en-US.msi(.sig)`. After all builds succeed, the release workflow runs `scripts/update-manifest.mjs` to write `latest.json` (platform keys `darwin-aarch64[-app]`, `darwin-x86_64[-app]`, `windows-x86_64[-nsis]`, `windows-x86_64-msi`) and uploads it with `SHA256SUMS.txt`. Installed apps read it from `releases/latest/download/latest.json`, so a release becomes an update the moment it is published as latest.
 
 ## Building without a release
 
