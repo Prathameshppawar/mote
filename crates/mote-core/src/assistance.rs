@@ -266,26 +266,38 @@ fn insert_text(
     }
     if platform.clipboard_has_non_text() {
         // Never destroy images or files on the clipboard: type line by line instead.
-        for (i, line) in text.split('\n').enumerate() {
-            if i > 0 {
-                platform.press_key(Key::ShiftEnter, 1)?;
-            }
-            if !line.is_empty() {
-                platform.type_text(line)?;
-            }
-        }
-        return Ok(());
+        return type_lines(platform, text);
     }
     let saved = platform.clipboard_text(usize::MAX).ok().flatten();
     let sequence = platform.set_clipboard_text(text)?;
     own_writes.record_own_write(sequence);
-    platform.paste()?;
-    thread::sleep(PASTE_SETTLE);
+    let pasted = platform.paste();
+    if pasted.is_ok() {
+        thread::sleep(PASTE_SETTLE);
+    }
     // Restore only if nobody else changed the clipboard meanwhile.
     if platform.clipboard_sequence() == sequence {
         if let Some(previous) = saved {
             let restored = platform.set_clipboard_text(&previous)?;
             own_writes.record_own_write(restored);
+        }
+    }
+    match pasted {
+        Ok(()) => Ok(()),
+        // The app offers no paste command we can trigger: type instead.
+        Err(PlatformError::NotSupported(_) | PlatformError::Failed(_)) => type_lines(platform, text),
+        Err(error) => Err(error),
+    }
+}
+
+/// Types multi-line text, using Shift+Enter for line breaks.
+fn type_lines(platform: &dyn PlatformAdapter, text: &str) -> Result<(), PlatformError> {
+    for (i, line) in text.split('\n').enumerate() {
+        if i > 0 {
+            platform.press_key(Key::ShiftEnter, 1)?;
+        }
+        if !line.is_empty() {
+            platform.type_text(line)?;
         }
     }
     Ok(())
@@ -371,6 +383,53 @@ mod tests {
         assert!(correction_from_ai("Fine as is.", "Fine as is.").is_none());
         assert!(
             correction_from_ai("Short.", "A completely different and much longer rewrite of the sentence.").is_none()
+        );
+    }
+
+    #[test]
+    fn single_line_text_is_typed() {
+        let platform = crate::testing::FakePlatform::default();
+        let log = crate::testing::RecordingClipboardLog::default();
+        apply_edit(&platform, &EditPlan::Insert { text: "hello world".into() }, &log).unwrap();
+        assert_eq!(platform.typed(), vec!["hello world".to_string()]);
+    }
+
+    #[test]
+    fn multi_line_text_is_pasted_and_clipboard_restored() {
+        let platform = crate::testing::FakePlatform::default();
+        platform.set_focus(Some(crate::testing::focused_input(crate::platform::AppInfo::new("a", "A"), 1, "")));
+        platform.set_clipboard_text("user's copy").unwrap();
+        let log = crate::testing::RecordingClipboardLog::default();
+        apply_edit(&platform, &EditPlan::Insert { text: "line one\nline two".into() }, &log).unwrap();
+        assert!(platform.actions().contains(&crate::testing::PlatformAction::Paste));
+        assert_eq!(platform.text_before_caret().as_deref(), Some("line one\nline two"));
+        assert_eq!(platform.clipboard_text(100).unwrap().as_deref(), Some("user's copy"), "clipboard restored");
+        assert_eq!(log.sequences.lock().unwrap().len(), 2, "both writes are marked as Mote's own");
+    }
+
+    #[test]
+    fn failed_paste_falls_back_to_typing_lines() {
+        let platform = crate::testing::FakePlatform::default();
+        platform.paste_fails.store(true, std::sync::atomic::Ordering::SeqCst);
+        platform.set_clipboard_text("user's copy").unwrap();
+        let log = crate::testing::RecordingClipboardLog::default();
+        apply_edit(&platform, &EditPlan::Insert { text: "a\nb".into() }, &log).unwrap();
+        assert_eq!(platform.typed(), vec!["a".to_string(), "b".to_string()]);
+        assert!(platform.actions().contains(&crate::testing::PlatformAction::Key(Key::ShiftEnter, 1)));
+        assert_eq!(platform.clipboard_text(100).unwrap().as_deref(), Some("user's copy"));
+    }
+
+    #[test]
+    fn replace_all_selects_then_inserts() {
+        let platform = crate::testing::FakePlatform::default();
+        let log = crate::testing::RecordingClipboardLog::default();
+        apply_edit(&platform, &EditPlan::ReplaceAll { text: "better prompt".into() }, &log).unwrap();
+        assert_eq!(
+            platform.actions(),
+            vec![
+                crate::testing::PlatformAction::SelectAll,
+                crate::testing::PlatformAction::Typed("better prompt".into())
+            ]
         );
     }
 

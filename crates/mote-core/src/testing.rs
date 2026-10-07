@@ -25,6 +25,8 @@ pub struct FakePlatform {
     pub actions: Mutex<Vec<PlatformAction>>,
     pub clipboard: Mutex<(u64, Option<String>)>,
     pub permission: Mutex<Option<PermissionStatus>>,
+    /// Makes `paste()` fail as if the app had no paste command.
+    pub paste_fails: std::sync::atomic::AtomicBool,
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -143,6 +145,9 @@ impl PlatformAdapter for FakePlatform {
     }
 
     fn paste(&self) -> Result<(), PlatformError> {
+        if self.paste_fails.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(PlatformError::NotSupported("no paste command".into()));
+        }
         lock(&self.actions).push(PlatformAction::Paste);
         let text = lock(&self.clipboard).1.clone().unwrap_or_default();
         if let Some(f) = lock(&self.focused).as_mut() {
