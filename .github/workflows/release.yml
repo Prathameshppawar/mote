@@ -40,11 +40,23 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --draft --verify-tag --title "Mote ${TAG}" --notes-file "docs/releases/${TAG}.md"
+          # Reuse the draft from an earlier run of this tag (re-runs, a re-pushed tag);
+          # otherwise create it. Any API failure stops the job instead of creating
+          # a duplicate draft or building without a release to upload to.
+          id=$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            --jq "map(select(.tag_name == \"${TAG}\")) | first | .id // empty")
+          if [ -z "$id" ]; then
+            id=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/releases" \
+              -f tag_name="$TAG" -f name="Mote ${TAG}" -F draft=true \
+              -F body=@"docs/releases/${TAG}.md" --jq .id)
           fi
-          echo "release-id=$(gh release view "$TAG" --json databaseId --jq .databaseId)" >> "$GITHUB_OUTPUT"
+          if ! [[ "$id" =~ ^[0-9]+$ ]]; then
+            echo "::error::Could not find or create a draft release for ${TAG}"
+            exit 1
+          fi
+          echo "release-id=$id" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build installers
@@ -64,11 +76,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           mkdir assets
           gh release download "${GITHUB_REF_NAME}" --dir assets
           ls -la assets
       - name: Compute SHA-256 checksums
         run: |
+          set -euo pipefail
           cd assets
           rm -f SHA256SUMS.txt
           sha256sum -- * | sort -k2 > ../SHA256SUMS.txt
@@ -77,6 +91,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
           gh release upload "$TAG" SHA256SUMS.txt --clobber
           {
