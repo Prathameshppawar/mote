@@ -178,7 +178,9 @@ pub fn fnv1a64(bytes: &[u8]) -> u64 {
 /// Whether the token looks like part of a URL, email address, file path, mention
 /// or hashtag in `text`, judged by the characters around it.
 pub fn token_in_technical_span(text: &str, token: &Token<'_>) -> bool {
-    let span_start = text[..token.start].rfind(char::is_whitespace).map_or(0, |i| i + 1);
+    // Whitespace may be more than one byte (U+00A0, U+202F, U+3000, …).
+    let span_start =
+        text[..token.start].char_indices().rev().find(|(_, c)| c.is_whitespace()).map_or(0, |(i, c)| i + c.len_utf8());
     let span_end = text[token.end..].find(char::is_whitespace).map_or(text.len(), |i| token.end + i);
     let span = &text[span_start..span_end];
     let chars: Vec<char> = span.chars().collect();
