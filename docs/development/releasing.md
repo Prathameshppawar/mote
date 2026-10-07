@@ -53,12 +53,19 @@ Assets of a release:
 | File | |
 |---|---|
 | `Mote_X.Y.Z_aarch64.dmg`, `Mote_X.Y.Z_x64.dmg` | macOS disk images |
-| `Mote_aarch64.app.tar.gz`, `Mote_x64.app.tar.gz` | macOS app bundles |
-| `Mote_X.Y.Z_x64-setup.exe` | Windows NSIS installer (per user) |
-| `Mote_X.Y.Z_x64_en-US.msi` | Windows MSI |
+| `Mote_X.Y.Z_aarch64.app.tar.gz`, `Mote_X.Y.Z_x64.app.tar.gz` | macOS app bundles |
+| `Mote_X.Y.Z_x64-setup.exe` | Windows NSIS installer (per user, no administrator rights) |
+| `Mote_X.Y.Z_x64_en-US.msi` | Windows MSI (per machine, needs administrator rights) |
 | `SHA256SUMS.txt` | SHA-256 of every file above |
 
-If a build job fails, fix the cause and use **Re-run failed jobs**. The draft is reused, and assets with the same name are replaced. Nothing is published until every build has succeeded.
+If a build job fails for a transient reason (a network error, a runner problem), use **Re-run failed jobs**. A re-run uses the tagged commit, so for a code or workflow fix, commit the fix and move the tag:
+
+```sh
+git tag -d vX.Y.Z && git push origin :refs/tags/vX.Y.Z
+git tag -a vX.Y.Z -m "Mote X.Y.Z" && git push origin vX.Y.Z
+```
+
+Either way the existing draft is reused and assets with the same names are replaced. Nothing is published until every build has succeeded.
 
 After publishing, download one installer per platform, check it against `SHA256SUMS.txt`, and run a quick smoke test.
 

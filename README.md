@@ -47,7 +47,7 @@ Download the latest release from the [Releases page](https://github.com/Prathame
 |---|---|
 | macOS, Apple Silicon (M1 and later) | `Mote_<version>_aarch64.dmg` |
 | macOS, Intel | `Mote_<version>_x64.dmg` |
-| Windows 10/11 (x64) | `Mote_<version>_x64-setup.exe` (recommended) or `Mote_<version>_x64_en-US.msi` |
+| Windows 10/11 (x64) | `Mote_<version>_x64-setup.exe` (recommended, installs for your account) or `Mote_<version>_x64_en-US.msi` (installs for all users, needs administrator rights) |
 
 Each release includes `SHA256SUMS.txt`. To verify a download:
 
@@ -66,8 +66,8 @@ Get-FileHash .\Mote_1.0.0_x64-setup.exe -Algorithm SHA256  # Windows PowerShell
 
 ### Windows
 
-1. Run the installer. Windows SmartScreen may say "Windows protected your PC" because the installer isn't code-signed yet: click **More info → Run anyway**.
-2. The installer adds Mote for your user account (no administrator rights needed) and installs the Microsoft Edge WebView2 runtime if it's missing.
+1. Run `Mote_<version>_x64-setup.exe`. Windows SmartScreen may say "Windows protected your PC" because the installer isn't code-signed yet: click **More info → Run anyway**.
+2. The installer adds Mote for your user account (no administrator rights needed) and installs the Microsoft Edge WebView2 runtime if it's missing. (The MSI installs for all users instead and asks for administrator rights; install only one of the two.)
 3. Mote starts in the system tray. Onboarding walks you through the rest.
 
 ### Set up AI
