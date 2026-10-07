@@ -1,7 +1,7 @@
 {
   "name": "mote-desktop",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Mote — AI that stays in the flow (desktop UI).",
   "license": "MIT",
   "type": "module",

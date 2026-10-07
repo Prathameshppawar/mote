@@ -2434,7 +2434,7 @@ dependencies = [
 
 [[package]]
 name = "mote-core"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2452,7 +2452,7 @@ dependencies = [
 
 [[package]]
 name = "mote-desktop"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "chrono",
  "keyring",
@@ -2480,7 +2480,7 @@ dependencies = [
 
 [[package]]
 name = "mote-platform"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "libc",
  "mote-core",
@@ -2496,7 +2496,7 @@ dependencies = [
 
 [[package]]
 name = "mote-providers"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2513,7 +2513,7 @@ dependencies = [
 
 [[package]]
 name = "mote-storage"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "chrono",
  "mote-core",

@@ -6,6 +6,22 @@ All notable changes to Mote are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-08
+
+### Added
+
+- **Prompt enhancer on Tab.** In AI prompt boxes, pause for a moment and "Enhance prompt · Tab" appears; Tab rewrites the whole prompt in place (⌘Z / Ctrl+Z restores yours). Esc cancels or hides the hint for that field, typing during enhancement keeps your version, and if a field can't be edited the enhanced prompt goes to the clipboard. Choose the style used by Tab under Settings → Context (default: Improve).
+- **Updates in place.** Mote checks GitHub Releases a minute after launch and every six hours, downloads and verifies a newer version in the background, and installs it when you choose "Restart to Update" in the menu bar or Settings → About. Turn it off under Settings → General.
+- Prompt boxes recognized in more places: AI chat inputs inside IDEs (Claude Code, GitHub Copilot) and the Microsoft 365 Copilot app.
+
+### Changed
+
+- macOS builds are signed with a stable Mote certificate instead of ad hoc, so macOS keeps the Accessibility permission across updates. Moving from 1.0 to 1.1 asks for it once more.
+
+### Fixed
+
+- Mote saw no text field in Electron apps (VS Code, Slack, Notion, Discord), in web pages in Chrome-based browsers, or in apps embedding Chromium: it now switches on their accessibility tree before reading, as these apps require.
+
 ## [1.0.0] - 2026-10-07
 
 First public release.
@@ -37,5 +53,6 @@ First public release.
 - Typed text, prompts, model outputs, clipboard contents and window titles are never stored or logged. The database is readable only by your user account.
 - Each window gets only the IPC commands it needs (Tauri capabilities), under a strict content security policy.
 
-[Unreleased]: https://github.com/Prathameshppawar/mote/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/Prathameshppawar/mote/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/Prathameshppawar/mote/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Prathameshppawar/mote/releases/tag/v1.0.0
