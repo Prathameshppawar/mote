@@ -145,12 +145,14 @@ impl ContextManager {
         events
     }
 
-    /// The current application is excluded or observation stopped: forget the
-    /// focused input and window title, and do not record the application.
+    /// The current application is excluded or observation stopped (paused,
+    /// disabled, Secure Input): forget the focused input, window title and
+    /// remembered clipboard content, and do not record the application.
     pub fn on_unobservable(&mut self) {
         self.active_app = None;
         self.window_title = None;
         self.focus = None;
+        self.clipboard = None;
         self.category = AppCategory::Other;
     }
 
@@ -372,9 +374,11 @@ mod tests {
         let mut m = ContextManager::new(OsPlatform::Macos, Duration::from_secs(60));
         let now = Utc::now();
         m.on_app_activated(app("com.apple.notes", "Notes"), Some("Diary".into()), now);
+        m.on_clipboard("copied before switching to an excluded app", None, now);
         m.on_unobservable();
         assert!(m.active_app().is_none());
         assert!(m.window_title().is_none());
+        assert!(m.clipboard(now).is_none(), "remembered clipboard content is dropped too");
     }
 
     #[test]

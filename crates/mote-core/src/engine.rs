@@ -382,6 +382,9 @@ impl Engine {
 
     fn apply_settings(&mut self, settings: Settings) {
         self.context.set_clipboard_ttl(Duration::from_secs(u64::from(settings.context.clipboard_ttl_secs)));
+        if !settings.privacy.observe_clipboard {
+            self.context.forget_clipboard();
+        }
         self.ignored_words = settings.writing.ignored_words.iter().map(|w| w.to_lowercase()).collect();
         let assistance_off = !settings.general.assistance_enabled;
         self.settings = settings;
@@ -994,7 +997,13 @@ impl Engine {
         };
         let platform = self.deps.platform.clone();
         let own = self.deps.own_clipboard_writes.clone();
+        let expected_app = self.focus.as_ref().map(|f| f.app.id.clone());
         let outcome = tokio::task::spawn_blocking(move || -> Result<(), PlatformError> {
+            // Focus may have moved to another (possibly excluded) app since the last
+            // poll: check before reading anything from the focused field.
+            if expected_app.is_some() && platform.active_application().map(|a| a.id) != expected_app {
+                return Err(PlatformError::Failed("another application is in front".into()));
+            }
             if let Some(expected) = expected {
                 let current = platform.focused_input(ReadLimits::default())?.ok_or(PlatformError::NoFocusedElement)?;
                 if !current.text_before_caret.ends_with(&expected) {

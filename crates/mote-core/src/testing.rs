@@ -30,6 +30,8 @@ pub struct FakePlatform {
     pub permission: Mutex<Option<PermissionStatus>>,
     /// Makes `paste()` fail as if the app had no paste command.
     pub paste_fails: std::sync::atomic::AtomicBool,
+    /// How many times the focused field's text was read.
+    pub focused_reads: std::sync::atomic::AtomicUsize,
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -94,6 +96,7 @@ impl PlatformAdapter for FakePlatform {
     }
 
     fn focused_input(&self, _limits: ReadLimits) -> Result<Option<FocusedInput>, PlatformError> {
+        self.focused_reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok(lock(&self.focused).clone())
     }
 

@@ -18,7 +18,7 @@ use tokio::sync::{mpsc, watch};
 use crate::assistance::ClipboardWriteLog;
 use crate::context::manager::CLIPBOARD_MAX_CHARS;
 use crate::engine::{EngineInput, Observation, UnobservableReason};
-use crate::platform::{FocusedInput, PermissionState, PlatformAdapter, ReadLimits};
+use crate::platform::{AppInfo, FocusedInput, PermissionState, PlatformAdapter, ReadLimits};
 use crate::privacy::{ObservationDecision, PrivacyPolicy};
 use crate::text::fnv1a64;
 
@@ -103,6 +103,9 @@ pub struct ObserverState {
     last_focus: Option<FocusSignature>,
     focus_reported: bool,
     last_clipboard_sequence: Option<u64>,
+    /// The app in front at the previous tick and whether its clipboard could
+    /// be read. `None` after a blocked tick.
+    clipboard_context: Option<(AppInfo, bool)>,
     last_text_change: Option<Instant>,
 }
 
@@ -182,6 +185,7 @@ impl Observer {
         }
         // Content that appears on the clipboard while blocked is never read later.
         state.last_clipboard_sequence = Some(self.platform.clipboard_sequence());
+        state.clipboard_context = None;
     }
 
     /// One polling step. Returns how long to wait before the next one.
@@ -247,20 +251,29 @@ impl Observer {
             self.clear_focus(state);
         }
 
+        // A clipboard change happened at some point since the previous tick, so
+        // possibly in the app that was in front then (people copy, then switch).
+        // It is read only if that context and the current one both allow it, and
+        // credited to the earlier app.
+        let readable_now = policy.may_read_clipboard(decision);
+        let previous = state.clipboard_context.replace((app.clone(), readable_now));
         let sequence = self.platform.clipboard_sequence();
         match state.last_clipboard_sequence {
             None => state.last_clipboard_sequence = Some(sequence),
-            Some(previous) if previous != sequence => {
+            Some(last) if last != sequence => {
                 state.last_clipboard_sequence = Some(sequence);
                 if !self.own_writes.contains(sequence) {
-                    if policy.may_read_clipboard(decision) {
-                        if let Ok(Some(text)) = self.platform.clipboard_text(CLIPBOARD_MAX_CHARS) {
-                            if !text.trim().is_empty() {
-                                self.send(Observation::Clipboard { text, source_app: Some(app.clone()) });
+                    match previous {
+                        Some((source, true)) if readable_now => {
+                            if let Ok(Some(text)) = self.platform.clipboard_text(CLIPBOARD_MAX_CHARS) {
+                                if !text.trim().is_empty() {
+                                    self.send(Observation::Clipboard { text, source_app: Some(source) });
+                                }
                             }
                         }
-                    } else {
-                        self.send(Observation::ClipboardUnreadable);
+                        _ => {
+                            self.send(Observation::ClipboardUnreadable);
+                        }
                     }
                 }
             }
@@ -456,6 +469,60 @@ mod tests {
         r.platform.set_clipboard_text("hunter2").unwrap();
         let obs = r.tick();
         assert_eq!(obs, vec![Observation::ClipboardUnreadable]);
+    }
+
+    #[test]
+    fn a_copy_in_an_excluded_app_is_not_read_after_switching_away() {
+        let mut r = rig();
+        let policy = PrivacyPolicy {
+            exclusions: vec![ExclusionRule {
+                id: 1,
+                kind: ExclusionKind::App,
+                pattern: "com.example.bank".into(),
+                display_name: "Bank".into(),
+            }],
+            ..PrivacyPolicy::default()
+        };
+        r.policy_tx.send(policy).unwrap();
+        r.platform.set_focus(Some(focused_input(AppInfo::new("com.example.bank", "Bank"), 1, "")));
+        r.tick();
+        // Copied in the excluded app, then switched to Slack before the next poll.
+        r.platform.set_clipboard_text("account 1234 5678").unwrap();
+        r.platform.set_focus(Some(focused_input(slack(), 2, "")));
+        let obs = r.tick();
+        assert!(obs.contains(&Observation::ClipboardUnreadable), "{obs:?}");
+        assert!(obs.iter().all(|o| !matches!(o, Observation::Clipboard { .. })), "{obs:?}");
+    }
+
+    #[test]
+    fn a_copy_followed_by_a_switch_is_credited_to_the_earlier_app() {
+        let mut r = rig();
+        let chrome = AppInfo::new("com.google.Chrome", "Google Chrome");
+        r.platform.set_focus(Some(focused_input(chrome, 1, "")));
+        r.tick();
+        r.platform.set_clipboard_text("TypeError: cannot read properties of undefined").unwrap();
+        r.platform.set_focus(Some(focused_input(AppInfo::new("com.microsoft.VSCode", "Code"), 2, "")));
+        let obs = r.tick();
+        assert!(
+            obs.iter()
+                .any(|o| matches!(o, Observation::Clipboard { source_app: Some(a), .. } if a.name == "Google Chrome")),
+            "{obs:?}"
+        );
+    }
+
+    #[test]
+    fn a_copy_made_while_paused_is_not_read_after_resuming() {
+        let mut r = rig();
+        r.platform.set_focus(Some(focused_input(slack(), 1, "")));
+        r.tick();
+        let paused =
+            PrivacyPolicy { paused_until: Some(Utc::now() + chrono::Duration::hours(1)), ..PrivacyPolicy::default() };
+        r.policy_tx.send(paused).unwrap();
+        r.tick();
+        r.platform.set_clipboard_text("copied while paused").unwrap();
+        r.policy_tx.send(PrivacyPolicy::default()).unwrap();
+        let obs = r.tick();
+        assert!(obs.iter().all(|o| !matches!(o, Observation::Clipboard { .. })), "{obs:?}");
     }
 
     #[test]

@@ -298,6 +298,23 @@ async fn stale_suggestion_at_accept_time_passes_tab_through() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn tab_after_switching_apps_reads_nothing_from_the_new_app() {
+    let h = harness(vec![Script::ok("the cache was cold", 50, 5)], Settings::default());
+    let slack = h.app(SLACK.0, SLACK.1, None).await;
+    h.focus(focused_input(slack, 1, "The deployment failed because")).await;
+    h.wait(600).await;
+    assert!(h.shell.visible().is_some(), "suggestion shown");
+    // Focus moved to a password manager; the observer has not polled yet.
+    let reads_before = h.platform.focused_reads.load(std::sync::atomic::Ordering::SeqCst);
+    h.platform.set_focus(Some(focused_input(AppInfo::new("com.1password.1password", "1Password"), 9, "hunter2")));
+    h.send(EngineInput::Shortcut(ShortcutAction::Accept)).await;
+    h.wait(100).await;
+    assert_eq!(h.platform.focused_reads.load(std::sync::atomic::Ordering::SeqCst), reads_before, "nothing was read");
+    assert!(h.platform.typed().is_empty());
+    assert_eq!(h.platform.actions(), vec![PlatformAction::Key(Key::Tab, 1)], "Tab reaches the new app");
+}
+
+#[tokio::test(start_paused = true)]
 async fn copied_email_then_ide_prompt_offers_context() {
     let h = harness(vec![], Settings::default());
     let chrome = h.app("com.google.Chrome", "Google Chrome", Some("Inbox - Gmail")).await;
