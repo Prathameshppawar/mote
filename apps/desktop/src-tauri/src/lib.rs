@@ -208,6 +208,7 @@ fn setup(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         tracing::warn!(%error, "command palette shortcut not registered");
     }
 
+    windows::apply_theme(app, settings.general.theme);
     windows::create_overlay(app)?;
     tray::build(app, &settings)?;
 

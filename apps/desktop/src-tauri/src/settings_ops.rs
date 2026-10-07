@@ -32,6 +32,9 @@ pub fn save(app: &AppHandle, state: &Arc<AppState>, settings: Settings) -> Comma
     }
     state.storage.save_settings(&settings)?;
     state.apply_settings(settings.clone());
+    if previous.general.theme != settings.general.theme {
+        crate::windows::apply_theme(app, settings.general.theme);
+    }
     tray::refresh(app, &settings);
     let _ = app.emit("settings-changed", settings.clone());
     Ok(settings)

@@ -30,6 +30,26 @@ pub const SECTIONS: &[&str] = &[
     "about",
 ];
 
+/// The window theme for the user's appearance setting (`None` follows the system).
+pub fn native_theme(theme: mote_core::settings::Theme) -> Option<tauri::Theme> {
+    match theme {
+        mote_core::settings::Theme::System => None,
+        mote_core::settings::Theme::Light => Some(tauri::Theme::Light),
+        mote_core::settings::Theme::Dark => Some(tauri::Theme::Dark),
+    }
+}
+
+/// Applies the appearance setting to every window, including the overlay and
+/// palette (their pages follow `prefers-color-scheme`, which tracks the
+/// window theme).
+pub fn apply_theme(app: &AppHandle, theme: mote_core::settings::Theme) {
+    app.set_theme(native_theme(theme));
+}
+
+fn current_theme(app: &AppHandle) -> Option<tauri::Theme> {
+    app.try_state::<std::sync::Arc<crate::state::AppState>>().and_then(|s| native_theme(s.settings().general.theme))
+}
+
 /// Opens (or focuses) the main window at `section`.
 pub fn show_main(app: &AppHandle, section: Option<&str>) -> tauri::Result<()> {
     let section = section.filter(|s| SECTIONS.contains(s));
@@ -49,6 +69,7 @@ pub fn show_main(app: &AppHandle, section: Option<&str>) -> tauri::Result<()> {
     }
     let url = format!("index.html#/{}", section.unwrap_or(""));
     let window = WebviewWindowBuilder::new(app, MAIN, WebviewUrl::App(url.into()))
+        .theme(current_theme(app))
         .title("Mote")
         .inner_size(1060.0, 720.0)
         .min_inner_size(860.0, 580.0)
@@ -96,6 +117,7 @@ pub fn palette(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         return Ok(window);
     }
     WebviewWindowBuilder::new(app, PALETTE, WebviewUrl::App("palette.html".into()))
+        .theme(current_theme(app))
         .title("Mote")
         .inner_size(680.0, 500.0)
         .decorations(false)
