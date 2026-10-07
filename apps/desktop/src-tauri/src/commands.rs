@@ -198,6 +198,7 @@ pub async fn set_api_key(app: AppHandle, state: AppStateRef<'_>, key: String) ->
     state.load_api_key();
     state.resilient.reset();
     state.clear_models_cache();
+    refresh_engine_status(&state);
     let report = state.groq.health_check(&required_models(&state.settings())).await;
     state.set_last_health(report);
     let _ = app.emit("provider-changed", ());
@@ -213,8 +214,15 @@ pub fn clear_api_key(app: AppHandle, state: AppStateRef<'_>) -> CommandResult<Pr
     state.load_api_key();
     *state.last_health.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = None;
     state.clear_models_cache();
+    refresh_engine_status(&state);
     let _ = app.emit("provider-changed", ());
     Ok(provider_status(state.inner()))
+}
+
+/// Re-applies the current settings in the engine, which drops a stale provider
+/// problem (such as "needs API key") and republishes the status.
+fn refresh_engine_status(state: &AppState) {
+    let _ = state.engine.tx.try_send(EngineInput::Settings(Box::new(state.settings())));
 }
 
 /// Tests the saved key, or a candidate key without saving it.

@@ -122,6 +122,72 @@ async fn completion_is_suggested_and_accepted_with_tab() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_failure_releases_the_keys_and_the_engine_carries_on() {
+    let h = harness(
+        vec![Script::ok("the cache was cold", 50, 5), Script::ok("we lost the connection", 50, 5)],
+        Settings::default(),
+    );
+    let slack = h.app(SLACK.0, SLACK.1, None).await;
+    let input = focused_input(slack.clone(), 1, "The deployment failed because");
+    h.focus(input.clone()).await;
+    h.wait(600).await;
+    assert!(h.shell.keys_active(), "suggestion visible with keys registered");
+
+    // Typing through the suggestion re-renders it; that render fails.
+    h.shell.panic_on_next_show.store(true, std::sync::atomic::Ordering::SeqCst);
+    h.type_more(&input, " the").await;
+    assert!(!h.shell.keys_active(), "Tab and Esc are released");
+    assert!(h.shell.visible().is_none(), "the overlay is hidden");
+
+    // A fresh engine handles the next input on the same inbox.
+    h.app(SLACK.0, SLACK.1, None).await;
+    h.focus(focused_input(slack, 2, "The upload stopped because")).await;
+    h.wait(600).await;
+    assert_eq!(h.shell.visible().map(|v| v.text), Some(" we lost the connection".into()));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_failed_classification_is_not_retried_on_every_keystroke() {
+    let failures =
+        (0..10).map(|_| Script::fail(ProviderError::Server { status: 503, message: "busy".into() })).collect();
+    let h = harness(failures, Settings::default());
+    // A generic browser field: too ambiguous to classify locally.
+    let chrome = h.app("com.google.Chrome", "Google Chrome", Some("Untitled")).await;
+    let mut input = focused_input(chrome, 3, "");
+    input.role = crate::platform::InputRole::TextField;
+    input.is_multiline = false;
+    h.focus(input.clone()).await;
+    let mut current = input;
+    for word in ["something", " about", " the", " quarterly", " numbers", " and", " plans"] {
+        current = h.type_more(&current, word).await;
+        // Long enough for each failed request (and its retry) to finish.
+        h.wait(1_500).await;
+    }
+    let classifications = h.provider.calls().iter().filter(|c| c.feature == Feature::IntentClassification).count();
+    assert!(classifications >= 1, "the ambiguous field was sent for classification");
+    assert!(classifications <= 2, "one request (plus its retry), not one per keystroke: {classifications}");
+}
+
+#[tokio::test(start_paused = true)]
+async fn motes_own_windows_do_not_report_an_excluded_app() {
+    let h = harness(vec![], Settings::default());
+    h.send(EngineInput::Observe(Observation::App {
+        app: AppInfo::new(crate::intent::apps::MOTE_BUNDLE_ID, "Mote"),
+        title: Some("Mote".into()),
+        decision: ObservationDecision::Excluded(crate::privacy::ExclusionReason::MoteItself),
+    }))
+    .await;
+    assert_eq!(h.shell.last_status().map(|s| s.state), Some(EngineState::Idle));
+    h.send(EngineInput::Observe(Observation::App {
+        app: AppInfo::new("com.example.bank", "Bank"),
+        title: None,
+        decision: ObservationDecision::Excluded(crate::privacy::ExclusionReason::UserApp),
+    }))
+    .await;
+    assert_eq!(h.shell.last_status().map(|s| s.state), Some(EngineState::Excluded));
+}
+
+#[tokio::test(start_paused = true)]
 async fn typing_through_a_suggestion_keeps_it_until_text_diverges() {
     let h = harness(vec![Script::ok("the cache was cold", 50, 5)], Settings::default());
     let slack = h.app(SLACK.0, SLACK.1, None).await;

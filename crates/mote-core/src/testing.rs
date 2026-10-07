@@ -194,6 +194,8 @@ pub enum ShellCall {
 #[derive(Default)]
 pub struct FakeShell {
     pub calls: Mutex<Vec<ShellCall>>,
+    /// Makes the next `show` panic, to test the engine's recovery.
+    pub panic_on_next_show: std::sync::atomic::AtomicBool,
 }
 
 impl FakeShell {
@@ -236,6 +238,9 @@ impl FakeShell {
 
 impl AssistantShell for FakeShell {
     fn show(&self, view: &OverlayView) {
+        if self.panic_on_next_show.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            panic!("injected shell failure");
+        }
         lock(&self.calls).push(ShellCall::Show(view.clone()));
     }
 

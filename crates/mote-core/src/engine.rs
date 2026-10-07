@@ -8,10 +8,12 @@
 //! the user has since changed) are simply discarded.
 
 use std::collections::{HashMap, HashSet};
+use std::panic::AssertUnwindSafe;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use chrono::Utc;
+use futures::FutureExt;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tokio::time::Instant;
@@ -33,7 +35,7 @@ use crate::intent::apps::categorize;
 use crate::intent::{self, IntentAssessment, IntentKind, IntentSignals, IntentSource, IntentSubtype};
 use crate::language::{detect, LanguageLabel, LanguageProfile};
 use crate::platform::{AppInfo, CoordinateSpace, FocusedInput, Key, PlatformAdapter, PlatformError, ReadLimits, Rect};
-use crate::privacy::ObservationDecision;
+use crate::privacy::{ExclusionReason, ObservationDecision};
 use crate::prompts::{ClassificationPrompt, CompletionPrompt};
 use crate::providers::types::Feature;
 use crate::providers::ProviderError;
@@ -191,6 +193,7 @@ pub struct EngineSnapshot {
 }
 
 /// Dependencies injected into the engine.
+#[derive(Clone)]
 pub struct EngineDeps {
     pub platform: Arc<dyn PlatformAdapter>,
     pub ai: Arc<AiClient>,
@@ -221,6 +224,9 @@ const MIN_HINT_CHARS: usize = 15;
 const TAB_LOOP_GUARD: Duration = Duration::from_millis(250);
 const MAX_ALTERNATIVES: usize = 3;
 const CLASSIFICATION_EXCERPT_CHARS: usize = 400;
+/// After a classification request fails for a field, wait this long before
+/// asking about that field again (otherwise every keystroke would retry).
+const CLASSIFICATION_RETRY_AFTER: Duration = Duration::from_secs(120);
 
 enum Active {
     Completion(SuggestionSet),
@@ -252,10 +258,14 @@ pub struct Engine {
     settings: Settings,
     context: ContextManager,
     unobservable: Option<UnobservableReason>,
+    /// Mote's own window (settings, palette) is in front: nothing is observed,
+    /// but the status keeps describing the user's apps.
+    mote_in_front: bool,
     focus: Option<FocusedInput>,
     language: LanguageProfile,
     intent: Option<IntentAssessment>,
     ai_intents: HashMap<u64, IntentAssessment>,
+    classification_failures: HashMap<u64, Instant>,
     classification_pending: Option<(u64, u64)>,
     active: Option<Active>,
     pending_completion: Option<PendingCompletion>,
@@ -282,19 +292,31 @@ impl Engine {
     pub fn new(deps: EngineDeps, settings: Settings) -> (Self, EngineHandle, mpsc::Receiver<EngineInput>) {
         let (tx, rx) = mpsc::channel(256);
         let snapshot = Arc::new(Mutex::new(EngineSnapshot::default()));
+        let engine = Self::from_parts(deps, settings, tx.clone(), snapshot.clone());
+        (engine, EngineHandle { tx, snapshot }, rx)
+    }
+
+    fn from_parts(
+        deps: EngineDeps,
+        settings: Settings,
+        tx: mpsc::Sender<EngineInput>,
+        snapshot: Arc<Mutex<EngineSnapshot>>,
+    ) -> Self {
         let ttl = Duration::from_secs(u64::from(settings.context.clipboard_ttl_secs));
         let ignored_words = settings.writing.ignored_words.iter().map(|w| w.to_lowercase()).collect();
-        let engine = Self {
+        Self {
             context: ContextManager::new(deps.platform.os(), ttl),
             deps,
-            tx: tx.clone(),
-            snapshot: snapshot.clone(),
+            tx,
+            snapshot,
             settings,
             unobservable: None,
+            mote_in_front: false,
             focus: None,
             language: LanguageProfile::unknown(),
             intent: None,
             ai_intents: HashMap::new(),
+            classification_failures: HashMap::new(),
             classification_pending: None,
             active: None,
             pending_completion: None,
@@ -314,12 +336,35 @@ impl Engine {
             provider_problem: None,
             last_status: None,
             last_tab_passthrough: None,
-        };
-        (engine, EngineHandle { tx, snapshot }, rx)
+        }
     }
 
     /// Runs until [`EngineInput::Shutdown`] or until all senders are dropped.
-    pub async fn run(mut self, mut rx: mpsc::Receiver<EngineInput>) {
+    ///
+    /// If handling an input ever panics, the suggestion keys are released, the
+    /// overlay is hidden and a fresh engine carries on with the same inbox, so a
+    /// bug costs one suggestion rather than the rest of the session, and never
+    /// leaves Tab captured.
+    pub async fn run(self, mut rx: mpsc::Receiver<EngineInput>) {
+        let mut engine = self;
+        loop {
+            if AssertUnwindSafe(engine.serve(&mut rx)).catch_unwind().await.is_ok() {
+                return;
+            }
+            tracing::error!("the assistance engine failed; restarting it");
+            engine.cancel_pending();
+            engine.deps.shell.hide();
+            engine.deps.shell.set_suggestion_keys(false);
+            engine = Self::from_parts(
+                engine.deps.clone(),
+                engine.settings.clone(),
+                engine.tx.clone(),
+                engine.snapshot.clone(),
+            );
+        }
+    }
+
+    async fn serve(&mut self, rx: &mut mpsc::Receiver<EngineInput>) {
         self.publish_status();
         loop {
             let deadline =
@@ -366,6 +411,7 @@ impl Engine {
                 self.dismissed.clear();
                 self.checked.clear();
                 self.ai_intents.clear();
+                self.classification_failures.clear();
                 self.hinted.clear();
                 self.offered_clipboard = None;
                 self.reset_focus();
@@ -398,6 +444,7 @@ impl Engine {
         let now = Utc::now();
         match observation {
             Observation::App { app, title, decision } => {
+                self.mote_in_front = decision == ObservationDecision::Excluded(ExclusionReason::MoteItself);
                 if decision.is_allowed() {
                     self.unobservable = None;
                     let switched = self.context.active_app().is_none_or(|current| current.id != app.id);
@@ -417,6 +464,7 @@ impl Engine {
                 }
             }
             Observation::Unobservable(reason) => {
+                self.mote_in_front = false;
                 self.context.on_unobservable();
                 self.reset_focus();
                 self.unobservable = Some(reason);
@@ -533,6 +581,7 @@ impl Engine {
         if self.settings.context.ai_classification
             && !self.ai_intents.contains_key(&element_key)
             && self.classification_pending.is_none_or(|(_, key)| key != element_key)
+            && self.classification_failures.get(&element_key).is_none_or(|t| t.elapsed() >= CLASSIFICATION_RETRY_AFTER)
             && intent::needs_ai_classification(&assessment, &full_text)
             && self.deps.ai.automatic_requests_allowed()
         {
@@ -583,13 +632,25 @@ impl Engine {
                     self.ai_intents.clear();
                 }
                 self.ai_intents.insert(element_key, assessment);
+                self.classification_failures.remove(&element_key);
                 if self.focus.as_ref().is_some_and(|f| f.element_key == element_key) {
                     self.classify();
                 }
             }
-            Ok(None) => {}
-            Err(error) => self.on_provider_error(&error),
+            Ok(None) => self.note_classification_failure(element_key),
+            Err(ProviderError::Cancelled) => {}
+            Err(error) => {
+                self.note_classification_failure(element_key);
+                self.on_provider_error(&error);
+            }
         }
+    }
+
+    fn note_classification_failure(&mut self, element_key: u64) {
+        if self.classification_failures.len() > 64 {
+            self.classification_failures.clear();
+        }
+        self.classification_failures.insert(element_key, Instant::now());
     }
 
     fn on_text_changed(&mut self) {
@@ -1104,7 +1165,7 @@ impl Engine {
     fn compute_status(&self) -> EngineStatus {
         let routing = self.deps.ai.routing();
         let provider = self.deps.ai.provider();
-        let (state, message) = if let Some(reason) = self.unobservable {
+        let (state, message) = if let Some(reason) = self.unobservable.filter(|_| !self.mote_in_front) {
             let state = match reason {
                 UnobservableReason::Disabled => EngineState::Disabled,
                 UnobservableReason::Paused => EngineState::Paused,
