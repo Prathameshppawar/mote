@@ -16,9 +16,9 @@ use tokio_util::sync::CancellationToken;
 
 use mote_core::ai::{AiClient, Routing};
 use mote_core::intent::apps::AppCategory;
-use mote_core::intent::IntentKind;
+use mote_core::intent::{IntentKind, IntentSubtype};
 use mote_core::language::detect;
-use mote_core::prompts::{ClassificationPrompt, CompletionPrompt};
+use mote_core::prompts::{ClassificationPrompt, CompletionPrompt, EnhanceStyle, TransformAction, TransformPrompt};
 use mote_core::providers::resilient::ResilientProvider;
 use mote_core::providers::types::*;
 use mote_core::providers::{ModelProvider, ProviderError};
@@ -141,6 +141,36 @@ async fn live_json_classification() {
         .expect("valid JSON");
     eprintln!("classification: {assessment:?}");
     assert_eq!(assessment.kind, IntentKind::Prompt);
+}
+
+#[tokio::test]
+#[ignore = "live Groq API"]
+async fn live_prompt_enhancement_rewrites_without_answering() {
+    let (ai, _) = ai(live_provider());
+    let cases = [
+        ("write python script that reads sales csv and plots monthly totals", Some(IntentSubtype::Coding)),
+        ("mujhe manager ko 3 din ki leave ke liye email likhna hai, reason family function hai", None),
+    ];
+    for (draft, subtype) in cases {
+        let language = detect(draft);
+        let action = TransformAction::EnhancePrompt { style: EnhanceStyle::Improve };
+        let prompt = TransformPrompt {
+            action: &action,
+            text: draft,
+            language: &language,
+            kind: Some(IntentKind::Prompt),
+            subtype,
+            clipboard: None,
+        };
+        let result = ai.transform(&prompt, &CancellationToken::new()).await.unwrap();
+        eprintln!("enhanced: {:?}", result.text);
+        assert!(!result.truncated);
+        assert_ne!(result.text.trim(), draft);
+        let lower = result.text.to_lowercase();
+        assert!(!lower.contains("import ") && !lower.contains("```"), "answered instead of rewriting: {lower}");
+        assert!(!result.text.chars().any(|c| ('\u{0900}'..='\u{097F}').contains(&c)), "kept the Latin script");
+        assert!(result.text.chars().count() < 2_000, "stays a prompt, not an essay");
+    }
 }
 
 #[tokio::test]
