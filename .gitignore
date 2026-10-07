@@ -1,0 +1,39 @@
+# Rust
+/target/
+**/target/
+*.rs.bk
+
+# Node / frontend
+node_modules/
+apps/desktop/dist/
+*.tsbuildinfo
+.vite/
+coverage/
+
+# Tauri generated
+apps/desktop/src-tauri/gen/schemas/
+
+# Secrets and local configuration — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.key
+*.keystore
+secrets/
+
+# Local databases and logs
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
