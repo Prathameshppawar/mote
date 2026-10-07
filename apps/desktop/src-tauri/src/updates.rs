@@ -119,10 +119,15 @@ impl Updates {
         let Some((update, bytes)) = lock(&self.ready).take() else {
             return Err(CommandError::invalid("There is no downloaded update to install."));
         };
-        if let Some(state) = app.try_state::<Arc<AppState>>() {
+        let state = app.try_state::<Arc<AppState>>();
+        if let Some(state) = &state {
             state.quitting.store(true, Ordering::SeqCst);
         }
         if let Err(error) = update.install(bytes) {
+            // Still running: closing the last window must keep Mote in the menu bar.
+            if let Some(state) = &state {
+                state.quitting.store(false, Ordering::SeqCst);
+            }
             tracing::warn!(error = %describe(&error), "update install failed");
             self.set(app, UpdateState::Failed { message: describe(&error) });
             return Err(CommandError::new("update", "Mote could not install the update. It will try again later."));
