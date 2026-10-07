@@ -343,13 +343,15 @@ mod tests {
     #[test]
     fn excluded_apps_are_never_read() {
         let mut r = rig();
-        let mut policy = PrivacyPolicy::default();
-        policy.exclusions = vec![ExclusionRule {
-            id: 1,
-            kind: ExclusionKind::App,
-            pattern: "com.example.bank".into(),
-            display_name: "Bank".into(),
-        }];
+        let policy = PrivacyPolicy {
+            exclusions: vec![ExclusionRule {
+                id: 1,
+                kind: ExclusionKind::App,
+                pattern: "com.example.bank".into(),
+                display_name: "Bank".into(),
+            }],
+            ..PrivacyPolicy::default()
+        };
         r.policy_tx.send(policy).unwrap();
         r.platform.set_focus(Some(focused_input(AppInfo::new("com.example.bank", "Bank"), 1, "account 1234")));
         let obs = r.tick();
@@ -382,8 +384,8 @@ mod tests {
     fn pause_permission_and_secure_input_block_observation() {
         let mut r = rig();
         r.platform.set_focus(Some(focused_input(slack(), 1, "hello")));
-        let mut policy = PrivacyPolicy::default();
-        policy.paused_until = Some(Utc::now() + chrono::Duration::hours(1));
+        let policy =
+            PrivacyPolicy { paused_until: Some(Utc::now() + chrono::Duration::hours(1)), ..PrivacyPolicy::default() };
         r.policy_tx.send(policy).unwrap();
         assert_eq!(r.tick(), vec![Observation::Unobservable(UnobservableReason::Paused)]);
         assert!(r.tick().is_empty(), "reported once");
@@ -409,8 +411,7 @@ mod tests {
     #[test]
     fn text_observation_switch_is_respected() {
         let mut r = rig();
-        let mut policy = PrivacyPolicy::default();
-        policy.observe_text = false;
+        let policy = PrivacyPolicy { observe_text: false, ..PrivacyPolicy::default() };
         r.policy_tx.send(policy).unwrap();
         r.platform.set_focus(Some(focused_input(slack(), 1, "hello")));
         let obs = r.tick();
@@ -453,8 +454,7 @@ mod tests {
         r.platform.set_focus(None);
         let idle = r.observer.tick(&mut r.state);
         assert_eq!(idle, ObserverConfig::default().idle);
-        let mut policy = PrivacyPolicy::default();
-        policy.assistance_enabled = false;
+        let policy = PrivacyPolicy { assistance_enabled: false, ..PrivacyPolicy::default() };
         r.policy_tx.send(policy).unwrap();
         assert_eq!(r.observer.tick(&mut r.state), ObserverConfig::default().blocked);
     }
