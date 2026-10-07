@@ -19,7 +19,7 @@ Every rule here is deterministic and unit-tested. The model is consulted only to
 2. Evaluates `PrivacyPolicy::evaluate(app, title, now)`. If the result is not `Allowed` (disabled, paused, excluded, password manager, Mote itself), it emits `Unobservable(reason)` and reads nothing else.
 3. Checks the platform permission and macOS **Secure Input**; either one blocks reading.
 4. Reads the **focused input** with `ReadLimits` (2,000 characters before the caret, 200 after, 8,000 selected). Secure fields are reported as secure without reading their value. The input must belong to the active application.
-5. If clipboard observation is on, compares the clipboard **sequence number**. Only when it changed, and the change was not Mote's own write, does it read the text (plain text only, never concealed or monitor-excluded content).
+5. If clipboard observation is on, compares the clipboard **sequence number**. Only when it changed, the change was not Mote's own write, and both the app that was in front at the previous tick and the current one may be observed, does it read the text (plain text only, never concealed or monitor-excluded content). The copy is credited to the earlier app, because people copy and then switch. A change that happened while Mote was blocked is never read later.
 
 Polling adapts to activity so idle CPU stays near zero:
 

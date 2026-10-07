@@ -47,7 +47,7 @@ Out of scope:
 - **Secrets in the OS credential store.** The Groq key lives in the macOS Keychain or Windows Credential Manager, is wrapped in a type that never prints and is zeroed after use, and is redacted from logs, errors and diagnostics.
 - **Privacy checks before reading.** Password managers, secure fields, Secure Input and excluded apps are never read (see the [privacy model](docs/privacy/privacy-model.md) and [ADR 0006](docs/decisions/0006-privacy-boundaries.md)).
 - **Least privilege between windows.** Each window may call only the IPC commands it needs (Tauri capabilities), under a strict content security policy (only the app's own scripts; network access only to the IPC endpoint).
-- **One outbound destination.** HTTPS to the configured provider (`api.groq.com` by default; plain HTTP is accepted only for localhost).
+- **One outbound destination.** HTTPS to the configured provider (`api.groq.com` by default; plain HTTP is accepted only for loopback addresses such as `localhost`, and never with credentials in the URL).
 - **Dependency checks in CI.** `npm audit` (production dependencies, high severity) and `cargo audit` run on every push and pull request. As of 1.0, `cargo audit` reports no vulnerabilities and two informational warnings (RUSTSEC-2024-0429 `glib`, unsound; RUSTSEC-2024-0370 `proc-macro-error`, unmaintained). Both are in Tauri's Linux-only GTK dependencies and are not compiled into the macOS or Windows apps.
 - **Verifiable releases.** Every release publishes `SHA256SUMS.txt`. 1.0 builds are ad-hoc signed (macOS) and unsigned (Windows); signing is on the [roadmap](docs/product/roadmap.md).
 

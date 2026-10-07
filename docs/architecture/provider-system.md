@@ -37,7 +37,7 @@ Because every feature is built on `generate`, any provider that implements it su
 
 ## Groq and OpenAI-compatible providers
 
-`crates/mote-providers` implements `OpenAiCompatibleProvider`, parameterised by a `Dialect` (`Groq` or `Generic`). `GroqProvider` is a thin wrapper that fixes the dialect and base URL (`https://api.groq.com/openai/v1`, overridable in settings for proxies; `http://` is accepted only for localhost) and verifies keys.
+`crates/mote-providers` implements `OpenAiCompatibleProvider`, parameterised by a `Dialect` (`Groq` or `Generic`). `GroqProvider` is a thin wrapper that fixes the dialect and base URL (`https://api.groq.com/openai/v1`, overridable in settings for proxies; `http://` is accepted only for loopback addresses, and URLs with credentials, queries or fragments are rejected) and verifies keys.
 
 What the dialect handles:
 
