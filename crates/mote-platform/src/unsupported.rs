@@ -48,6 +48,9 @@ impl PlatformAdapter for UnsupportedPlatform {
     fn set_clipboard_text(&self, _text: &str) -> Result<u64, PlatformError> {
         unsupported()
     }
+    fn set_transient_clipboard_text(&self, _text: &str) -> Result<u64, PlatformError> {
+        unsupported()
+    }
     fn type_text(&self, _text: &str) -> Result<(), PlatformError> {
         unsupported()
     }

@@ -271,8 +271,14 @@ pub trait PlatformAdapter: Send + Sync {
     /// rich content) that a text round-trip would lose.
     fn clipboard_has_non_text(&self) -> bool;
 
-    /// Replaces the clipboard with plain text; returns the new sequence number.
+    /// Replaces the clipboard with plain text the user keeps (an explicit copy,
+    /// or their own content put back after a paste); returns the new sequence number.
     fn set_clipboard_text(&self, text: &str) -> Result<u64, PlatformError>;
+
+    /// Replaces the clipboard with text that exists only to be pasted by Mote.
+    /// It is marked so that clipboard history and monitors, including
+    /// [`Self::clipboard_text`], ignore it. Returns the new sequence number.
+    fn set_transient_clipboard_text(&self, text: &str) -> Result<u64, PlatformError>;
 
     /// insertText(): types `text` at the caret of the focused application.
     /// `text` must not contain line breaks (they would submit chat messages);

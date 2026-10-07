@@ -345,7 +345,11 @@ impl PlatformAdapter for MacPlatform {
     }
 
     fn set_clipboard_text(&self, text: &str) -> Result<u64, PlatformError> {
-        pasteboard::write_text(text)
+        pasteboard::write_text(text, false)
+    }
+
+    fn set_transient_clipboard_text(&self, text: &str) -> Result<u64, PlatformError> {
+        pasteboard::write_text(text, true)
     }
 
     fn type_text(&self, text: &str) -> Result<(), PlatformError> {

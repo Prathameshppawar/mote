@@ -269,7 +269,10 @@ fn insert_text(
         return type_lines(platform, text);
     }
     let saved = platform.clipboard_text(usize::MAX).ok().flatten();
-    let sequence = platform.set_clipboard_text(text)?;
+    // The paste buffer is transient so clipboard history never records it; the
+    // user's own text is put back as a normal write so it stays readable for
+    // the next insertion.
+    let sequence = platform.set_transient_clipboard_text(text)?;
     own_writes.record_own_write(sequence);
     let pasted = platform.paste();
     if pasted.is_ok() {
@@ -405,6 +408,22 @@ mod tests {
         assert_eq!(platform.text_before_caret().as_deref(), Some("line one\nline two"));
         assert_eq!(platform.clipboard_text(100).unwrap().as_deref(), Some("user's copy"), "clipboard restored");
         assert_eq!(log.sequences.lock().unwrap().len(), 2, "both writes are marked as Mote's own");
+    }
+
+    #[test]
+    fn consecutive_pastes_keep_the_users_clipboard() {
+        let platform = crate::testing::FakePlatform::default();
+        platform.set_focus(Some(crate::testing::focused_input(crate::platform::AppInfo::new("a", "A"), 1, "")));
+        platform.set_clipboard_text("user's copy").unwrap();
+        let log = crate::testing::RecordingClipboardLog::default();
+        apply_edit(&platform, &EditPlan::Insert { text: "first\nresult".into() }, &log).unwrap();
+        apply_edit(&platform, &EditPlan::Insert { text: "second\nresult".into() }, &log).unwrap();
+        assert_eq!(platform.text_before_caret().as_deref(), Some("first\nresultsecond\nresult"));
+        assert_eq!(
+            platform.clipboard_text(100).unwrap().as_deref(),
+            Some("user's copy"),
+            "the restored copy is a normal write, so the second paste can save and restore it too"
+        );
     }
 
     #[test]

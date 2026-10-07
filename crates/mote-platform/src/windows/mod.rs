@@ -169,7 +169,11 @@ impl PlatformAdapter for WindowsPlatform {
     }
 
     fn set_clipboard_text(&self, text: &str) -> Result<u64, PlatformError> {
-        clipboard::set_text(text)
+        clipboard::set_text(text, false)
+    }
+
+    fn set_transient_clipboard_text(&self, text: &str) -> Result<u64, PlatformError> {
+        clipboard::set_text(text, true)
     }
 
     fn type_text(&self, text: &str) -> Result<(), PlatformError> {

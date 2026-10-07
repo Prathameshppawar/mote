@@ -50,8 +50,9 @@ pub fn has_non_text() -> bool {
     })
 }
 
-/// Replaces the clipboard with `text` (marked transient). Returns the new change count.
-pub fn write_text(text: &str) -> Result<u64, PlatformError> {
+/// Replaces the clipboard with `text`, marked transient when it exists only to
+/// be pasted. Returns the new change count.
+pub fn write_text(text: &str, transient: bool) -> Result<u64, PlatformError> {
     let pasteboard = NSPasteboard::generalPasteboard();
     pasteboard.clearContents();
     // SAFETY: reading a framework-provided constant.
@@ -59,7 +60,8 @@ pub fn write_text(text: &str) -> Result<u64, PlatformError> {
     if !pasteboard.setString_forType(&NSString::from_str(text), string_type) {
         return Err(PlatformError::Failed("could not write to the clipboard".into()));
     }
-    let transient = NSString::from_str(TRANSIENT);
-    pasteboard.setString_forType(&NSString::from_str(""), &transient);
+    if transient {
+        pasteboard.setString_forType(&NSString::from_str(""), &NSString::from_str(TRANSIENT));
+    }
     Ok(change_count())
 }

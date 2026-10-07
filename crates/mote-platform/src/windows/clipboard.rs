@@ -1,4 +1,10 @@
 //! The Windows clipboard, as plain text.
+//!
+//! Content that the copying application asks clipboard monitors to ignore
+//! (`ExcludeClipboardContentFromMonitorProcessing`, `Clipboard Viewer Ignore`,
+//! or `CanIncludeInClipboardHistory` set to 0, as password managers do) is
+//! never read. Text Mote writes only to paste it carries the same markers, so
+//! clipboard history (Win+V) and cloud clipboard do not record it.
 
 use std::ffi::c_void;
 use std::mem::size_of;
@@ -6,7 +12,7 @@ use std::sync::{Mutex, PoisonError};
 use std::thread;
 use std::time::Duration;
 
-use ::windows::core::w;
+use ::windows::core::{w, PCWSTR};
 use ::windows::Win32::Foundation::{GlobalFree, HANDLE, HGLOBAL};
 use ::windows::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, GetClipboardData, GetClipboardSequenceNumber, IsClipboardFormatAvailable,
@@ -39,6 +45,42 @@ pub(super) fn sequence() -> u64 {
 fn format_available(format: u32) -> bool {
     // SAFETY: plain query without pointers.
     unsafe { IsClipboardFormatAvailable(format) }.is_ok()
+}
+
+/// The id of a registered clipboard format (0 if registration failed).
+fn registered(name: PCWSTR) -> u32 {
+    // SAFETY: `name` is a NUL-terminated static string; registering returns the existing id.
+    unsafe { RegisterClipboardFormatW(name) }
+}
+
+/// Whether the copying application asked clipboard monitors to ignore its
+/// content. Does not open the clipboard.
+fn excluded_from_monitors() -> bool {
+    [w!("ExcludeClipboardContentFromMonitorProcessing"), w!("Clipboard Viewer Ignore")]
+        .into_iter()
+        .map(registered)
+        .any(|format| format != 0 && format_available(format))
+}
+
+/// Whether `CanIncludeInClipboardHistory` is present and set to 0. The
+/// clipboard must be open on this thread. A value that cannot be read counts
+/// as excluded.
+fn excluded_from_history() -> bool {
+    let format = registered(w!("CanIncludeInClipboardHistory"));
+    if format == 0 || !format_available(format) {
+        return false;
+    }
+    // SAFETY: the clipboard is open on this thread; the returned handle stays owned by the clipboard.
+    let Ok(handle) = (unsafe { GetClipboardData(format) }) else { return true };
+    let memory = HGLOBAL(handle.0);
+    let Some(locked) = LockedGlobal::lock(memory) else { return true };
+    // SAFETY: plain query on a valid memory handle.
+    if unsafe { GlobalSize(memory) } < size_of::<u32>() {
+        return true;
+    }
+    // SAFETY: the locked block holds at least four bytes; `read_unaligned` has no alignment requirement.
+    let value = unsafe { locked.data.cast::<u32>().read_unaligned() };
+    value == 0
 }
 
 /// The clipboard, open on this thread until dropped.
@@ -96,6 +138,19 @@ impl OwnedGlobal {
     fn release(&mut self) {
         self.0 = None;
     }
+
+    /// A block holding one DWORD, the data of the clipboard marker formats.
+    fn dword(value: u32) -> Result<Self, PlatformError> {
+        // SAFETY: plain allocation; owned by the returned guard until the clipboard takes it.
+        let memory = unsafe { GlobalAlloc(GMEM_MOVEABLE, size_of::<u32>()) }
+            .map_err(|_| failed("could not allocate clipboard memory"))?;
+        let owned = Self(Some(memory));
+        let locked = LockedGlobal::lock(memory).ok_or_else(|| failed("could not allocate clipboard memory"))?;
+        // SAFETY: the locked block holds at least four bytes; `write_unaligned` has no alignment requirement.
+        unsafe { locked.data.cast::<u32>().write_unaligned(value) };
+        drop(locked);
+        Ok(owned)
+    }
 }
 
 impl Drop for OwnedGlobal {
@@ -108,14 +163,17 @@ impl Drop for OwnedGlobal {
 }
 
 /// Current clipboard text, at most `max_chars` characters. `Ok(None)` when the
-/// clipboard holds no text.
+/// clipboard holds no text, or text its owner asked monitors to ignore.
 pub(super) fn text(max_chars: usize) -> Result<Option<String>, PlatformError> {
     let format = u32::from(CF_UNICODETEXT.0);
-    if max_chars == 0 || !format_available(format) {
+    if max_chars == 0 || !format_available(format) || excluded_from_monitors() {
         return Ok(None);
     }
     let _lock = CLIPBOARD_LOCK.lock().unwrap_or_else(PoisonError::into_inner);
     let _session = ClipboardSession::open()?;
+    if excluded_from_history() {
+        return Ok(None);
+    }
     // SAFETY: the clipboard is open on this thread; the returned handle stays owned by the clipboard.
     let handle = unsafe { GetClipboardData(format) }.map_err(|_| failed("could not read the clipboard"))?;
     let memory = HGLOBAL(handle.0);
@@ -148,8 +206,10 @@ pub(super) fn has_non_text() -> bool {
     standard.into_iter().chain(registered.into_iter().filter(|&id| id != 0)).any(format_available)
 }
 
-/// Replaces the clipboard with `text`; returns the new sequence number.
-pub(super) fn set_text(text: &str) -> Result<u64, PlatformError> {
+/// Replaces the clipboard with `text`; returns the new sequence number. A
+/// `transient` write is marked so clipboard history, cloud clipboard and
+/// monitors ignore it.
+pub(super) fn set_text(text: &str, transient: bool) -> Result<u64, PlatformError> {
     let units: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
     let bytes = units.len() * size_of::<u16>();
     // SAFETY: plain allocation; the block is owned by `owned` until the clipboard takes it.
@@ -166,6 +226,20 @@ pub(super) fn set_text(text: &str) -> Result<u64, PlatformError> {
         // u16; it cannot overlap `units`, a separate heap allocation.
         unsafe { std::ptr::copy_nonoverlapping(units.as_ptr(), destination, units.len()) };
     }
+    // Allocated before opening the clipboard, which other applications wait on.
+    let mut markers = Vec::new();
+    if transient {
+        for name in [
+            w!("ExcludeClipboardContentFromMonitorProcessing"),
+            w!("CanIncludeInClipboardHistory"),
+            w!("CanUploadToCloudClipboard"),
+        ] {
+            let format = registered(name);
+            if format != 0 {
+                markers.push((format, OwnedGlobal::dword(0)?));
+            }
+        }
+    }
 
     let _lock = CLIPBOARD_LOCK.lock().unwrap_or_else(PoisonError::into_inner);
     let session = ClipboardSession::open()?;
@@ -176,6 +250,15 @@ pub(super) fn set_text(text: &str) -> Result<u64, PlatformError> {
     unsafe { SetClipboardData(u32::from(CF_UNICODETEXT.0), Some(HANDLE(memory.0))) }
         .map_err(|_| failed("could not write the clipboard"))?;
     owned.release();
+    for (format, marker) in &mut markers {
+        let Some(block) = marker.0 else { continue };
+        // SAFETY: the clipboard is open on this thread; `block` is an unlocked GMEM_MOVEABLE
+        // block holding one DWORD. On success the system owns it. Markers are best effort:
+        // the text is on the clipboard either way.
+        if unsafe { SetClipboardData(*format, Some(HANDLE(block.0))) }.is_ok() {
+            marker.release();
+        }
+    }
     drop(session);
     Ok(sequence())
 }
@@ -192,7 +275,7 @@ mod tests {
 
         let before = sequence();
         let sample = "Mote ✓ clipboard test: नमस्ते 😀\nsecond line";
-        let first = set_text(sample).expect("clipboard is writable");
+        let first = set_text(sample, false).expect("clipboard is writable");
         assert_ne!(first, before, "writing changes the sequence");
         assert_eq!(sequence(), first);
         assert_eq!(text(10_000).expect("readable").as_deref(), Some(sample));
@@ -200,15 +283,25 @@ mod tests {
         assert_eq!(text(0).expect("readable"), None);
         assert!(!has_non_text(), "plain text only");
 
-        let second = set_text("another value").expect("clipboard is writable");
+        let second = set_text("another value", false).expect("clipboard is writable");
         assert_ne!(second, first);
         assert_eq!(text(100).expect("readable").as_deref(), Some("another value"));
 
-        set_text("").expect("clipboard is writable");
+        let third = set_text("paste buffer", true).expect("clipboard is writable");
+        assert_ne!(third, second);
+        assert!(excluded_from_monitors(), "transient writes carry the monitor-exclusion marker");
+        assert_eq!(text(100).expect("readable"), None, "transient writes are not read back");
+        assert!(!has_non_text(), "markers are not content");
+
+        set_text("restored", false).expect("clipboard is writable");
+        assert!(!excluded_from_monitors(), "a normal write clears the markers");
+        assert_eq!(text(100).expect("readable").as_deref(), Some("restored"));
+
+        set_text("", false).expect("clipboard is writable");
         assert_eq!(text(100).expect("readable"), None, "empty text reads as no text");
 
         if let Some(saved) = saved {
-            let _ = set_text(&saved);
+            let _ = set_text(&saved, false);
         }
     }
 }

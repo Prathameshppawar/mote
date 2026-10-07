@@ -24,6 +24,9 @@ pub struct FakePlatform {
     pub app: Mutex<Option<AppInfo>>,
     pub actions: Mutex<Vec<PlatformAction>>,
     pub clipboard: Mutex<(u64, Option<String>)>,
+    /// Whether the clipboard holds a transient write, which (like the real
+    /// adapters) `clipboard_text` does not return.
+    pub clipboard_transient: std::sync::atomic::AtomicBool,
     pub permission: Mutex<Option<PermissionStatus>>,
     /// Makes `paste()` fail as if the app had no paste command.
     pub paste_fails: std::sync::atomic::AtomicBool,
@@ -103,6 +106,9 @@ impl PlatformAdapter for FakePlatform {
     }
 
     fn clipboard_text(&self, _max_chars: usize) -> Result<Option<String>, PlatformError> {
+        if self.clipboard_transient.load(std::sync::atomic::Ordering::SeqCst) {
+            return Ok(None);
+        }
         Ok(lock(&self.clipboard).1.clone())
     }
 
@@ -114,7 +120,14 @@ impl PlatformAdapter for FakePlatform {
         let mut clip = lock(&self.clipboard);
         clip.0 += 1;
         clip.1 = Some(text.to_string());
+        self.clipboard_transient.store(false, std::sync::atomic::Ordering::SeqCst);
         Ok(clip.0)
+    }
+
+    fn set_transient_clipboard_text(&self, text: &str) -> Result<u64, PlatformError> {
+        let sequence = self.set_clipboard_text(text)?;
+        self.clipboard_transient.store(true, std::sync::atomic::Ordering::SeqCst);
+        Ok(sequence)
     }
 
     fn type_text(&self, text: &str) -> Result<(), PlatformError> {
