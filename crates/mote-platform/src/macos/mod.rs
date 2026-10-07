@@ -38,6 +38,8 @@ struct FocusCache {
     selection: Option<(usize, usize)>,
     length: Option<i64>,
     snapshot: Option<FocusedInput>,
+    /// The limits the snapshot was read with; a request with other limits re-reads.
+    limits: Option<ReadLimits>,
     read_at: Option<Instant>,
 }
 
@@ -290,7 +292,7 @@ impl PlatformAdapter for MacPlatform {
             .range("AXSelectedTextRange")
             .and_then(|r| Some((usize::try_from(r.location).ok()?, usize::try_from(r.length).ok()?)));
         let fresh = cache.read_at.is_some_and(|t| t.elapsed() < MAX_SNAPSHOT_AGE);
-        if fresh && cache.selection == selection && cache.length == length {
+        if fresh && cache.selection == selection && cache.length == length && cache.limits == Some(limits) {
             if let Some(snapshot) = &cache.snapshot {
                 return Ok(Some(snapshot.clone()));
             }
@@ -317,6 +319,7 @@ impl PlatformAdapter for MacPlatform {
         cache.selection = selection;
         cache.length = length;
         cache.snapshot = Some(snapshot.clone());
+        cache.limits = Some(limits);
         cache.read_at = Some(Instant::now());
         Ok(Some(snapshot))
     }

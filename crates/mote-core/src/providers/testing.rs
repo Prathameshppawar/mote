@@ -15,6 +15,7 @@ use super::{ModelProvider, ProviderError};
 pub struct Script {
     pub outcome: Result<(String, TokenUsage), ProviderError>,
     pub delay: Duration,
+    pub finish_reason: &'static str,
 }
 
 impl Script {
@@ -30,15 +31,22 @@ impl Script {
                 },
             )),
             delay: Duration::from_millis(50),
+            finish_reason: "stop",
         }
     }
 
     pub fn fail(error: ProviderError) -> Self {
-        Self { outcome: Err(error), delay: Duration::from_millis(20) }
+        Self { outcome: Err(error), delay: Duration::from_millis(20), finish_reason: "stop" }
     }
 
     pub fn with_delay(mut self, delay: Duration) -> Self {
         self.delay = delay;
+        self
+    }
+
+    /// A reply cut off at the output limit (`finish_reason: "length"`).
+    pub fn truncated(mut self) -> Self {
+        self.finish_reason = "length";
         self
     }
 }
@@ -105,7 +113,7 @@ impl ModelProvider for ScriptedProvider {
         script.outcome.map(|(text, usage)| GenerationResponse {
             text,
             model: request.model.clone(),
-            finish_reason: Some("stop".into()),
+            finish_reason: Some(script.finish_reason.into()),
             usage: Some(usage),
             latency: script.delay,
             provider_latency: None,

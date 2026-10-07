@@ -42,6 +42,14 @@ impl Default for Routing {
     }
 }
 
+/// A transformed text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Transformed {
+    pub text: String,
+    /// The model stopped at the output limit, so the text may be incomplete.
+    pub truncated: bool,
+}
+
 pub struct AiClient {
     provider: Arc<ResilientProvider>,
     routing: RwLock<Routing>,
@@ -194,7 +202,7 @@ impl AiClient {
         &self,
         p: &TransformPrompt<'_>,
         cancel: &CancellationToken,
-    ) -> Result<String, ProviderError> {
+    ) -> Result<Transformed, ProviderError> {
         p.action.validate().map_err(|message| ProviderError::BadRequest { status: 0, message })?;
         let role = p.action.role();
         let temperature = match p.action {
@@ -217,11 +225,12 @@ impl AiClient {
             Vec::new(),
         )?;
         let response = self.provider.execute(request, cancel).await?;
+        let truncated = response.finish_reason.as_deref() == Some("length");
         let text = prompts::clean_transform_output(&response.text);
         if text.is_empty() {
             return Err(ProviderError::InvalidResponse("empty result".into()));
         }
-        Ok(text)
+        Ok(Transformed { text, truncated })
     }
 }
 
@@ -322,11 +331,29 @@ mod tests {
             )
             .await
             .unwrap();
-        assert!(out.starts_with("Fix the issue"));
+        assert!(out.text.starts_with("Fix the issue"));
+        assert!(!out.truncated);
         let call = &provider.calls()[0];
         assert_eq!(call.model, crate::settings::default_models::REASONING);
         assert_eq!(call.reasoning, ReasoningEffort::Low);
         assert_eq!(sink.events()[0].feature, Feature::PromptEnhancement);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn transform_reports_output_cut_off_at_the_limit() {
+        let (_, _, ai) = client(vec![Script::ok("The first half of a long rewrite that", 900, 2048).truncated()]);
+        let language = LanguageProfile::english();
+        let action = TransformAction::FixSpellingGrammar;
+        let prompt = TransformPrompt {
+            action: &action,
+            text: "long text",
+            language: &language,
+            kind: None,
+            subtype: None,
+            clipboard: None,
+        };
+        let out = ai.transform(&prompt, &CancellationToken::new()).await.unwrap();
+        assert!(out.truncated);
     }
 
     #[tokio::test]

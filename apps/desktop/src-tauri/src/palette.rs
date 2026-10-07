@@ -44,7 +44,10 @@ pub struct PaletteSession {
     pub captured_at: Instant,
     pub app: Option<AppInfo>,
     pub focus: Option<FocusedInput>,
+    /// Only part of the field (or of the selection) was read, so the result
+    /// must not replace it.
     pub field_truncated: bool,
+    pub selection_truncated: bool,
     pub intent: Option<IntentAssessment>,
     pub language: Option<LanguageProfile>,
     pub clipboard: Option<ClipboardSnapshot>,
@@ -167,10 +170,16 @@ fn field_text(focus: &FocusedInput) -> String {
     format!("{}{}{}", focus.text_before_caret, focus.selected_text.as_deref().unwrap_or(""), focus.text_after_caret)
 }
 
-/// Captures context (off the main thread) and shows the palette.
+/// Captures context (off the main thread) and shows the palette. Pressing the
+/// shortcut again while the palette is open closes it instead: capturing then
+/// would see Mote itself in front and lose the user's context.
 pub fn open(app: &AppHandle) {
     let Some(state) = app.try_state::<Arc<AppState>>() else { return };
     let state = state.inner().clone();
+    if app.get_webview_window(windows::PALETTE).is_some_and(|w| w.is_visible().unwrap_or(false)) {
+        close(app, &state, true);
+        return;
+    }
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let capture_state = state.clone();
@@ -192,6 +201,7 @@ fn capture(state: &AppState) -> PaletteSession {
         app: None,
         focus: None,
         field_truncated: false,
+        selection_truncated: false,
         intent: None,
         language: None,
         clipboard: None,
@@ -215,11 +225,23 @@ fn capture(state: &AppState) -> PaletteSession {
     }
     let mut focus = None;
     let mut field_truncated = false;
+    let mut selection_truncated = false;
     if policy.may_read_text(decision) {
         if let Ok(Some(input)) = state.platform.focused_input(PALETTE_LIMITS) {
             if !input.is_secure && input.app.id == app.id {
-                let read_units = utf16_len(&field_text(&input));
-                field_truncated = input.total_length.is_some_and(|total| total > read_units);
+                let chars = |s: &str| s.chars().count();
+                selection_truncated =
+                    input.selected_text.as_deref().is_some_and(|s| chars(s) >= PALETTE_LIMITS.selection);
+                // Without a known total length (common on Windows), a read that
+                // reached a limit may have stopped short of the field's ends.
+                field_truncated = match input.total_length {
+                    Some(total) => total > utf16_len(&field_text(&input)),
+                    None => {
+                        selection_truncated
+                            || chars(&input.text_before_caret) >= PALETTE_LIMITS.before_caret
+                            || chars(&input.text_after_caret) >= PALETTE_LIMITS.after_caret
+                    }
+                };
                 focus = Some(input);
             }
         }
@@ -231,6 +253,7 @@ fn capture(state: &AppState) -> PaletteSession {
         intent: if focus.is_some() { snapshot.intent } else { None },
         focus,
         field_truncated,
+        selection_truncated,
         language,
         clipboard: snapshot.clipboard.filter(|_| clipboard_allowed),
         context_suggestion: snapshot.context_suggestion.filter(|_| clipboard_allowed),
@@ -318,16 +341,22 @@ pub async fn run(state: Arc<AppState>, request: PaletteRunRequest) -> CommandRes
     let result = state.ai.transform(&prompt, &cancel).await;
     state.set_palette_cancel(None);
     let output = result?;
+    if output.truncated && !matches!(request.action, TransformAction::ContinueWriting) {
+        return Err(CommandError::new(
+            "truncated",
+            "The result was cut off because it was too long. Try again with less text.",
+        ));
+    }
     let source = if is_context_action { PaletteSource::Field } else { request.source };
     if let Some(session) = state.palette().as_mut() {
         session.source = Some(source);
     }
     let can_replace = match source {
-        PaletteSource::Selection => true,
+        PaletteSource::Selection => !session.selection_truncated,
         PaletteSource::Field => !session.field_truncated && !is_context_action,
         PaletteSource::Clipboard => false,
     } && session.app.is_some();
-    Ok(PaletteRunResult { text: output, source, can_replace })
+    Ok(PaletteRunResult { text: output.text, source, can_replace })
 }
 
 pub fn cancel(state: &AppState) {
@@ -354,23 +383,27 @@ pub async fn apply(
         }
         Ok(PaletteApplyResult { applied: false, copied: true, message: Some(notice.to_string()) })
     };
-    let target = session.as_ref().and_then(|s| Some((s.app.clone()?, s.focus.clone()?, s.source, s.field_truncated)));
+    let target = session
+        .as_ref()
+        .and_then(|s| Some((s.app.clone()?, s.focus.clone()?, s.source, s.field_truncated, s.selection_truncated)));
     if request.mode == ApplyMode::Copy {
         if let Some((app_info, ..)) = &target {
             let _ = state.platform.activate_application(app_info);
         }
         return copy(&state, "Copied to clipboard");
     }
-    let Some((app_info, focus, source, truncated)) = target else {
+    let Some((app_info, focus, source, field_truncated, selection_truncated)) = target else {
         return copy(&state, "No text field to insert into. Copied to clipboard");
     };
     let plan = match (request.mode, source) {
-        (ApplyMode::Replace, Some(PaletteSource::Selection)) => {
+        (ApplyMode::Replace, Some(PaletteSource::Selection)) if !selection_truncated => {
             EditPlan::ReplaceSelection { text: request.text.clone() }
         }
-        (ApplyMode::Replace, Some(PaletteSource::Field)) if !truncated => {
+        (ApplyMode::Replace, Some(PaletteSource::Field)) if !field_truncated => {
             EditPlan::ReplaceAll { text: request.text.clone() }
         }
+        // Replacing text Mote only partly read could delete the rest.
+        (ApplyMode::Replace, _) => return copy(&state, "Too long to replace safely. Copied to clipboard"),
         _ => EditPlan::Insert { text: request.text.clone() },
     };
     let platform = state.platform.clone();
