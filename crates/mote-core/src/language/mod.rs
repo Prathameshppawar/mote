@@ -265,6 +265,7 @@ fn detect_latin(sample: &str, script: Script) -> LanguageProfile {
     let (mut english_function, mut indic_function) = (0.0f32, 0.0f32);
     let mut strong_indic = 0u32;
     let mut unknown = 0.0f32;
+    let mut common_english = 0u32;
     let mut token_count = 0u32;
 
     for token in tokenize(sample) {
@@ -282,6 +283,9 @@ fn detect_latin(sample: &str, script: Script) -> LanguageProfile {
         }
         if INDIC_FUNCTION_WORDS.contains(&lower.as_str()) {
             indic_function += w;
+        }
+        if e >= 0.85 && w < 0.5 {
+            common_english += 1;
         }
         if h == 0.0 && m == 0.0 {
             if e > 0.0 {
@@ -307,8 +311,8 @@ fn detect_latin(sample: &str, script: Script) -> LanguageProfile {
             let hindi_part = hindi / indic_known;
             hindi += unknown * 0.8 * hindi_part;
             marathi += unknown * 0.8 * (1.0 - hindi_part);
-        } else if unknown / (token_count as f32) <= 0.4 {
-            // A few unknown words in English text are typos or names.
+        } else if token_count < 3 || common_english as f32 / token_count as f32 >= 0.35 {
+            // Unknown words among common English words are typos or names.
             english += unknown * 0.5;
         } else {
             return LanguageProfile {

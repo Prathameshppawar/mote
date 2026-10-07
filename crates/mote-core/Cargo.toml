@@ -12,6 +12,8 @@ repository.workspace = true
 default = []
 # Derive TypeScript bindings for IPC types (used by the desktop app's binding export).
 ts = ["dep:ts-rs"]
+# Test doubles (scripted provider) for other crates' tests.
+testing = []
 
 [dependencies]
 async-trait.workspace = true

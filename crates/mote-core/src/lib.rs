@@ -13,11 +13,20 @@
 //!     → intent engine → assistance engine → provider → suggestion → shell
 //! ```
 
+pub mod ai;
+pub mod assistance;
+pub mod completion;
 pub mod context;
+pub mod engine;
 pub mod intent;
 pub mod language;
 pub mod platform;
 pub mod privacy;
+pub mod prompts;
+pub mod providers;
 pub mod settings;
 pub mod spelling;
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
 pub mod text;
+pub mod usage;
