@@ -255,10 +255,21 @@ const state = {
   })) as ModelPricing[],
 };
 
+/** Commands invoked against the mock, in order (tests). */
+export const mockCalls: { command: string; args: Record<string, unknown> }[] = [];
+
+/** Makes palette_run take this long, so tests can act while it runs. */
+let paletteRunDelayMs = 0;
+export function setPaletteRunDelay(ms: number): void {
+  paletteRunDelayMs = ms;
+}
+
 /** Resets mock state (tests). */
 export function resetMock(): void {
   state.settings = defaultSettings();
   state.hasKey = true;
+  mockCalls.length = 0;
+  paletteRunDelayMs = 0;
 }
 
 function providerStatus(): ProviderStatus {
@@ -427,11 +438,14 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   },
   get_engine_status: () => engineStatus,
   palette_context: () => paletteContext(),
-  palette_run: () => ({
-    text: "Fix the issue in the following code. Identify the root cause, explain why the error occurs, and provide the smallest correct fix. Avoid unrelated changes.",
-    source: "field",
-    canReplace: true,
-  }),
+  palette_run: async () => {
+    if (paletteRunDelayMs) await new Promise((r) => setTimeout(r, paletteRunDelayMs));
+    return {
+      text: "Fix the issue in the following code. Identify the root cause, explain why the error occurs, and provide the smallest correct fix. Avoid unrelated changes.",
+      source: "field",
+      canReplace: true,
+    };
+  },
   palette_cancel: () => undefined,
   palette_apply: () => ({ applied: true, copied: false, message: null }),
   palette_close: () => undefined,
@@ -444,8 +458,9 @@ export async function mockInvoke<T>(command: string, args: Record<string, unknow
   if (!handler) {
     throw { code: "unknown_command", message: `Unknown command ${command}`, fields: [] };
   }
+  mockCalls.push({ command, args });
   await new Promise((r) => setTimeout(r, 0));
-  return handler(args) as T;
+  return (await handler(args)) as T;
 }
 
 /** Sample overlay payloads for the browser preview (overlay.html?demo=…). */

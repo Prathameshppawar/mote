@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ApplyMode } from "../bindings/ApplyMode";
 import type { PaletteContext } from "../bindings/PaletteContext";
@@ -36,6 +36,8 @@ export function Palette() {
   const [active, setActive] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   const resultBox = useRef<HTMLTextAreaElement>(null);
+  const root = useRef<HTMLDivElement>(null);
+  const retryButton = useRef<HTMLButtonElement>(null);
 
   const reset = useCallback(() => {
     setQuery("");
@@ -113,6 +115,7 @@ export function Palette() {
 
   const close = () => void api.paletteClose(true).catch(() => undefined);
 
+  /** One handler for the whole window, so Esc works in every state (focus may be on <body>). */
   const onKeyDown = (e: KeyboardEvent) => {
     const list = mode.kind === "translate" ? languages : visible;
     if (e.key === "Escape") {
@@ -129,17 +132,23 @@ export function Palette() {
       return setMode({ kind: "list" });
     }
     if (mode.kind === "result") {
+      // ⌘↩ (Ctrl+Enter) applies; plain Enter keeps its normal meaning (a newline in
+      // the editor, or activating the focused button).
       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        return void apply("insert");
+        return void apply(mode.result.canReplace && !e.shiftKey ? "replace" : "insert");
       }
-      if (e.key === "Enter" && !e.shiftKey && document.activeElement !== resultBox.current) {
+      return;
+    }
+    if (mode.kind === "custom") {
+      if (e.key === "Enter" && query.trim() && e.target === input.current) {
         e.preventDefault();
-        return void apply(mode.result.canReplace ? "replace" : "insert");
+        void run({ kind: "custom_enhance", instruction: query.trim() }, "Custom instruction");
       }
       return;
     }
     if (mode.kind !== "list" && mode.kind !== "translate") return;
+    if (e.target !== input.current) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setActive((a) => Math.min(list.length - 1, a + 1));
@@ -161,6 +170,27 @@ export function Palette() {
     }
   };
 
+  const keyHandler = useRef(onKeyDown);
+  useEffect(() => {
+    keyHandler.current = onKeyDown;
+  });
+  useEffect(() => {
+    const listener = (e: KeyboardEvent) => keyHandler.current(e);
+    document.addEventListener("keydown", listener);
+    return () => document.removeEventListener("keydown", listener);
+  }, []);
+
+  // Keep focus inside the palette when the input is replaced by a status or result.
+  useEffect(() => {
+    if (mode.kind === "running") root.current?.focus();
+    if (mode.kind === "error") retryButton.current?.focus();
+  }, [mode.kind]);
+
+  // Keep the highlighted option visible while moving through a long list.
+  useEffect(() => {
+    document.getElementById(`palette-option-${active}`)?.scrollIntoView?.({ block: "nearest" });
+  }, [active, mode.kind]);
+
   useEffect(() => setActive(0), [query, mode.kind]);
 
   const header = (
@@ -179,16 +209,12 @@ export function Palette() {
           }
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (mode.kind === "custom" && e.key === "Enter" && query.trim()) {
-              e.preventDefault();
-              void run({ kind: "custom_enhance", instruction: query.trim() }, "Custom instruction");
-              return;
-            }
-            onKeyDown(e);
-          }}
-          aria-label="Search actions"
-          aria-controls="palette-list"
+          role={mode.kind === "custom" ? undefined : "combobox"}
+          aria-expanded={mode.kind === "custom" ? undefined : true}
+          aria-autocomplete={mode.kind === "custom" ? undefined : "list"}
+          aria-controls={mode.kind === "custom" ? undefined : "palette-list"}
+          aria-activedescendant={mode.kind !== "custom" && (mode.kind === "translate" ? languages : visible).length ? `palette-option-${active}` : undefined}
+          aria-label={mode.kind === "translate" ? "Choose a language" : mode.kind === "custom" ? "Custom instruction" : "Search actions"}
           autoFocus
         />
       ) : (
@@ -199,7 +225,7 @@ export function Palette() {
   );
 
   return (
-    <div className="palette" onKeyDown={mode.kind === "result" || mode.kind === "running" || mode.kind === "error" ? onKeyDown : undefined}>
+    <div className="palette" ref={root} tabIndex={-1} aria-busy={mode.kind === "running" || undefined}>
       {header}
 
       {mode.kind === "list" ? (
@@ -230,13 +256,20 @@ export function Palette() {
               const showGroup = i === 0 || visible[i - 1]?.group !== item.group;
               return (
                 <li key={item.id} role="presentation">
-                  {showGroup ? <div className="palette-group">{item.group}</div> : null}
+                  {showGroup ? (
+                    <div className="palette-group" aria-hidden="true">
+                      {item.group}
+                    </div>
+                  ) : null}
                   <button
                     type="button"
                     role="option"
+                    id={`palette-option-${i}`}
+                    tabIndex={-1}
                     aria-selected={i === active}
                     className="palette-item"
                     onMouseEnter={() => setActive(i)}
+                    onMouseDown={(e) => e.preventDefault()}
                     onClick={() => choose(item)}
                   >
                     <span>{item.title}</span>
@@ -245,21 +278,28 @@ export function Palette() {
                 </li>
               );
             })}
-            {!visible.length ? <li className="palette-empty muted">No matching actions</li> : null}
+            {!visible.length ? (
+              <li className="palette-empty muted" role="presentation">
+                No matching actions
+              </li>
+            ) : null}
           </ul>
         </>
       ) : null}
 
       {mode.kind === "translate" ? (
-        <ul className="palette-list" role="listbox" aria-label="Languages">
+        <ul className="palette-list" id="palette-list" role="listbox" aria-label="Languages">
           {languages.map((l, i) => (
             <li key={l} role="presentation">
               <button
                 type="button"
                 role="option"
+                id={`palette-option-${i}`}
+                tabIndex={-1}
                 aria-selected={i === active}
                 className="palette-item"
                 onMouseEnter={() => setActive(i)}
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => void run({ kind: "translate", target: l }, `Translate to ${l}`)}
               >
                 {l}
@@ -274,8 +314,8 @@ export function Palette() {
       ) : null}
 
       {mode.kind === "running" ? (
-        <div className="palette-status">
-          <span className="spinner" />
+        <div className="palette-status" role="status">
+          <span className="spinner" aria-hidden="true" />
           Asking Groq… <span className="muted">Esc to cancel</span>
         </div>
       ) : null}
@@ -284,9 +324,10 @@ export function Palette() {
         <div className="palette-status" role="alert">
           <Icon name="alert" />
           <span>{mode.message}</span>
-          <button type="button" className="btn small" onClick={mode.retry}>
+          <button type="button" className="btn small" ref={retryButton} onClick={mode.retry}>
             Retry
           </button>
+          <span className="muted">Esc to go back</span>
         </div>
       ) : null}
 
@@ -302,12 +343,17 @@ export function Palette() {
           />
           <div className="palette-actions">
             {mode.result.canReplace ? (
-              <button type="button" className="btn primary" onClick={() => apply("replace")}>
-                Replace <kbd className="kbd">↩</kbd>
+              <button type="button" className="btn primary" onClick={() => apply("replace")} aria-keyshortcuts={isMac ? "Meta+Enter" : "Control+Enter"}>
+                Replace <kbd className="kbd">{mod}↩</kbd>
               </button>
             ) : null}
-            <button type="button" className={`btn ${mode.result.canReplace ? "" : "primary"}`} onClick={() => apply("insert")}>
-              Insert <kbd className="kbd">{mod}↩</kbd>
+            <button
+              type="button"
+              className={`btn ${mode.result.canReplace ? "" : "primary"}`}
+              onClick={() => apply("insert")}
+              aria-keyshortcuts={mode.result.canReplace ? (isMac ? "Meta+Shift+Enter" : "Control+Shift+Enter") : isMac ? "Meta+Enter" : "Control+Enter"}
+            >
+              Insert <kbd className="kbd">{mode.result.canReplace ? `${mod}${isMac ? "⇧" : "Shift+"}↩` : `${mod}↩`}</kbd>
             </button>
             <button type="button" className="btn" onClick={() => apply("copy")}>
               Copy

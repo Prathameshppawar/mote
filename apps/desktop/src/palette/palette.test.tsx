@@ -1,8 +1,9 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import type { PaletteContext } from "../bindings/PaletteContext";
+import { mockCalls, setPaletteRunDelay } from "../lib/mock";
 import { buildActions, filterActions } from "./actions";
 import { Palette } from "./Palette";
 
@@ -48,11 +49,23 @@ describe("palette actions", () => {
   });
 });
 
+const applyModes = () =>
+  mockCalls.filter((c) => c.command === "palette_apply").map((c) => (c.args.request as { mode: string }).mode);
+
+async function openResult(user: ReturnType<typeof userEvent.setup>) {
+  render(<Palette />);
+  const input = await screen.findByRole("combobox", { name: "Search actions" });
+  await screen.findByText("Debug this error");
+  await user.type(input, "improve prompt");
+  await user.keyboard("{Enter}");
+  return (await screen.findByRole("textbox", { name: "Result (editable)" })) as HTMLTextAreaElement;
+}
+
 describe("Palette", () => {
   it("runs the highlighted action with Enter and shows an editable result", async () => {
     const user = userEvent.setup();
     render(<Palette />);
-    const input = await screen.findByRole("textbox", { name: "Search actions" });
+    const input = await screen.findByRole("combobox", { name: "Search actions" });
     expect(await screen.findByText("Debug this error")).toBeInTheDocument();
     await user.type(input, "improve prompt");
     await user.keyboard("{Enter}");
@@ -60,7 +73,52 @@ describe("Palette", () => {
     expect((result as HTMLTextAreaElement).value).toMatch(/^Fix the issue in the following code/);
     expect(screen.getByRole("button", { name: /Replace/ })).toBeInTheDocument();
     await user.keyboard("{Escape}");
-    expect(await screen.findByRole("textbox", { name: "Search actions" })).toBeInTheDocument();
+    expect(await screen.findByRole("combobox", { name: "Search actions" })).toBeInTheDocument();
+  });
+
+  it("points the combobox at the highlighted option", async () => {
+    const user = userEvent.setup();
+    render(<Palette />);
+    const input = await screen.findByRole("combobox", { name: "Search actions" });
+    await screen.findByText("Debug this error");
+    expect(input).toHaveAttribute("aria-activedescendant", "palette-option-0");
+    await user.keyboard("{ArrowDown}");
+    expect(input).toHaveAttribute("aria-activedescendant", "palette-option-1");
+    expect(document.getElementById("palette-option-1")).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("Enter on a focused button does what the button says", async () => {
+    const user = userEvent.setup();
+    const result = await openResult(user);
+    await user.type(result, "{Enter}");
+    expect(applyModes()).toEqual([]); // Enter in the editor adds a newline
+    screen.getByRole("button", { name: /Copy/ }).focus();
+    await user.keyboard("{Enter}");
+    expect(applyModes()).toEqual(["copy"]);
+  });
+
+  it("Ctrl/Cmd+Enter applies the primary action from the editor", async () => {
+    const user = userEvent.setup();
+    const result = await openResult(user);
+    result.focus();
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    expect(applyModes()).toEqual(["replace"]);
+  });
+
+  it("Esc cancels a running request even though the input is gone", async () => {
+    const user = userEvent.setup();
+    setPaletteRunDelay(5_000);
+    render(<Palette />);
+    const input = await screen.findByRole("combobox", { name: "Search actions" });
+    await screen.findByText("Debug this error");
+    await user.type(input, "improve prompt");
+    await user.keyboard("{Enter}");
+    expect(await screen.findByText(/Asking Groq/)).toBeInTheDocument();
+    await act(async () => {
+      await user.keyboard("{Escape}");
+    });
+    expect(mockCalls.some((c) => c.command === "palette_cancel")).toBe(true);
+    expect(await screen.findByRole("combobox", { name: "Search actions" })).toBeInTheDocument();
   });
 
   it("shows the source of the text it will use", async () => {
