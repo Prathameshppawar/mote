@@ -20,7 +20,7 @@ All notable changes to Mote are documented here. The format follows
 
 ### Fixed
 
-- Mote saw no text field in Electron apps (VS Code, Slack, Notion, Discord), in web pages in Chrome-based browsers, or in apps embedding Chromium: it now switches on their accessibility tree before reading, as these apps require.
+- Mote could miss the text field in Electron apps (VS Code, Slack, Notion, Discord), Chrome-based browsers and apps embedding Chromium or WebView2: it now switches on their accessibility tree before looking for the focused field, as these apps require.
 
 ## [1.0.0] - 2026-10-07
 
