@@ -71,6 +71,7 @@ impl AiClient {
             && routing.configured
             && self.provider.rate_limited_until().is_none()
             && !self.provider.is_offline()
+            && !self.provider.is_unauthorized()
     }
 
     #[allow(clippy::too_many_arguments)]

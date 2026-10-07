@@ -1108,6 +1108,8 @@ impl Engine {
             (EngineState::CloudDisabled, None)
         } else if !routing.configured {
             (EngineState::NeedsApiKey, Some(ProviderError::NotConfigured.user_message()))
+        } else if provider.is_unauthorized() {
+            (EngineState::NeedsApiKey, Some(ProviderError::Unauthorized.user_message()))
         } else if provider.is_offline() {
             (EngineState::Offline, Some(ProviderError::Network(String::new()).user_message()))
         } else if let Some(until) = provider.rate_limited_until() {

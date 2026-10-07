@@ -5,7 +5,8 @@
 //! produces exactly one [`UsageEvent`], however many HTTP attempts it took.
 //! Tokens come from the final successful attempt; `attempts` and
 //! `rate_limit_hits` record what happened on the way. Requests that never
-//! leave the machine (no key, cloud disabled, local backoff) record nothing.
+//! leave the machine (no key, cloud disabled, local backoff, rejected key)
+//! record nothing.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -48,6 +49,8 @@ pub struct RequestOutcome {
 struct State {
     unavailable_models: HashMap<String, Instant>,
     rate_limited_until: Option<Instant>,
+    /// The provider rejected the API key; cleared by a success or a new key.
+    unauthorized: bool,
     network_failures: u32,
     last_network_failure: Option<Instant>,
     last_outcome: Option<RequestOutcome>,
@@ -76,6 +79,12 @@ impl ResilientProvider {
     /// Until when automatic requests should wait because of a rate limit.
     pub fn rate_limited_until(&self) -> Option<Instant> {
         self.state().rate_limited_until.filter(|until| *until > Instant::now())
+    }
+
+    /// Whether the provider rejected the API key. Automatic requests stop
+    /// until the key changes or a user-initiated request succeeds.
+    pub fn is_unauthorized(&self) -> bool {
+        self.state().unauthorized
     }
 
     /// Whether recent network failures indicate the provider is unreachable.
@@ -107,6 +116,7 @@ impl ResilientProvider {
         let mut state = self.state();
         state.unavailable_models.clear();
         state.rate_limited_until = None;
+        state.unauthorized = false;
         state.network_failures = 0;
         state.last_network_failure = None;
     }
@@ -144,6 +154,9 @@ impl ResilientProvider {
             }
             if self.is_offline() {
                 return Err(ProviderError::Network("offline".into()));
+            }
+            if self.is_unauthorized() {
+                return Err(ProviderError::Unauthorized);
             }
         }
 
@@ -236,7 +249,9 @@ impl ResilientProvider {
                 Ok(_) => {
                     state.network_failures = 0;
                     state.last_network_failure = None;
+                    state.unauthorized = false;
                 }
+                Err(ProviderError::Unauthorized) => state.unauthorized = true,
                 Err(ProviderError::Network(_) | ProviderError::Timeout) => {
                     state.network_failures += 1;
                     state.last_network_failure = Some(Instant::now());
@@ -472,6 +487,31 @@ mod tests {
         p.execute(request(RetryPolicy::interactive()), &CancellationToken::new()).await.unwrap();
         assert!(!p.is_offline());
         assert_eq!(sink.events().len(), 3);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn rejected_keys_stop_automatic_requests() {
+        let (provider, sink, p) = setup(vec![Script::fail(ProviderError::Unauthorized), Script::ok("ok", 1, 1)]);
+        let r = p.execute(request(RetryPolicy::none()), &CancellationToken::new()).await;
+        assert_eq!(r, Err(ProviderError::Unauthorized));
+        assert!(p.is_unauthorized());
+        // Typing on does not keep sending requests with a rejected key.
+        let skipped = p.execute(request(RetryPolicy::background()), &CancellationToken::new()).await;
+        assert_eq!(skipped, Err(ProviderError::Unauthorized));
+        assert_eq!(provider.calls().len(), 1, "automatic requests are not sent");
+        assert_eq!(sink.events().len(), 1, "only the request that reached the provider is recorded");
+        // A user-initiated request still goes through, and its success clears the state.
+        p.execute(request(RetryPolicy::interactive()), &CancellationToken::new()).await.unwrap();
+        assert!(!p.is_unauthorized());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_new_key_clears_the_rejected_state() {
+        let (_, _, p) = setup(vec![Script::fail(ProviderError::Unauthorized)]);
+        let _ = p.execute(request(RetryPolicy::none()), &CancellationToken::new()).await;
+        assert!(p.is_unauthorized());
+        p.reset();
+        assert!(!p.is_unauthorized());
     }
 
     #[tokio::test(start_paused = true)]
