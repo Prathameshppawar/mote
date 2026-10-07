@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  frontend:
+    name: Frontend · typecheck, lint, test, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  rust-core:
+    name: Rust core · fmt, clippy, test (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - name: Clippy (platform-independent crates)
+        run: cargo clippy -p mote-core -p mote-providers -p mote-storage -p mote-platform --all-targets --features mote-core/testing -- -D warnings
+      - name: Test (platform-independent crates)
+        run: cargo test -p mote-core -p mote-providers -p mote-storage -p mote-platform
+
+  desktop:
+    name: Desktop · ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - name: Build frontend (embedded by the Tauri crate)
+        working-directory: apps/desktop
+        run: |
+          npm ci
+          npm run build
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Clippy (whole workspace)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Test (whole workspace)
+        run: cargo test --workspace
+      - name: TypeScript bindings are up to date
+        if: runner.os == 'macOS'
+        run: |
+          cargo test -p mote-desktop --features bindings export_bindings
+          if [ -n "$(git status --porcelain -- apps/desktop/src/bindings)" ]; then
+            git status --short -- apps/desktop/src/bindings
+            echo "::error::Generated bindings are stale. Run: cargo test -p mote-desktop --features bindings export_bindings"
+            exit 1
+          fi
+
+  checks:
+    name: Repository checks · versions, secrets, audits
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Versions are consistent
+        run: node scripts/check-version.mjs
+      - name: No credentials committed
+        run: bash scripts/check-secrets.sh
+      - name: npm audit (production dependencies)
+        working-directory: apps/desktop
+        run: |
+          npm ci --ignore-scripts
+          npm audit --omit=dev --audit-level=high
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - name: cargo audit
+        run: cargo audit
