@@ -88,6 +88,8 @@ Tab, Esc and the alternative keys are captured only while a suggestion is on scr
 
 From the tray menu you can pause Mote for an hour, switch assistance, completion or context awareness on and off, open the command palette, jump to Usage, Privacy, Diagnostics or Settings, and **Restart to Update** when a new version has been downloaded.
 
+On a Mac with a notch, a crowded menu bar can hide Mote's icon. Opening Mote again from Applications or Spotlight brings up Settings, and ⌘-dragging the icon towards the clock keeps it visible.
+
 ## Supported platforms
 
 | | Minimum | Builds | Status in 1.0 |

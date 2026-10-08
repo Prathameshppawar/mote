@@ -115,6 +115,12 @@ pub fn run() {
                 api.prevent_exit();
             }
         }
+        // Opening Mote again from Finder, Spotlight or Launchpad while it runs
+        // shows Settings: the menu bar icon can be hidden behind the notch.
+        #[cfg(target_os = "macos")]
+        RunEvent::Reopen { .. } => {
+            let _ = windows::show_main(app, None);
+        }
         RunEvent::Exit => {
             if let Some(state) = app.try_state::<Arc<AppState>>() {
                 state.set_observer(None);
