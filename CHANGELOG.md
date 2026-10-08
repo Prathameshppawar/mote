@@ -6,6 +6,12 @@ All notable changes to Mote are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-10-08
+
+### Fixed
+
+- Opening Mote from Applications, Spotlight or Launchpad while it was already running did nothing, which left no way in when the menu bar icon was hidden behind the notch. It now opens Settings (macOS).
+
 ## [1.1.1] - 2026-10-08
 
 ### Fixed
@@ -59,7 +65,8 @@ First public release.
 - Typed text, prompts, model outputs, clipboard contents and window titles are never stored or logged. The database is readable only by your user account.
 - Each window gets only the IPC commands it needs (Tauri capabilities), under a strict content security policy.
 
-[Unreleased]: https://github.com/Prathameshppawar/mote/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/Prathameshppawar/mote/compare/v1.1.2...HEAD
+[1.1.2]: https://github.com/Prathameshppawar/mote/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/Prathameshppawar/mote/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/Prathameshppawar/mote/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Prathameshppawar/mote/releases/tag/v1.0.0
